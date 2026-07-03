@@ -55,6 +55,17 @@ class PlatformChannelService {
     }
   }
 
+  Future<void> updateAppBlockingModes(List<String> excluded, List<String> textBoxOnly) async {
+    try {
+      await _methodChannel.invokeMethod('updateAppBlockingModes', {
+        'excluded': excluded,
+        'textBoxOnly': textBoxOnly,
+      });
+    } on PlatformException catch (_) {
+      // Silently handled
+    }
+  }
+
   void startListeningToBlockingEvents(void Function(Map<String, dynamic> event) onEvent) {
     _eventSubscription?.cancel();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen((dynamic event) {

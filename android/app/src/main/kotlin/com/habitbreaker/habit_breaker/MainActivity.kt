@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
     private val METHOD_CHANNEL = "com.habitbreaker.app/blocking"
     private val EVENT_CHANNEL = "com.habitbreaker.app/blocking_events"
     private var eventSink: EventChannel.EventSink? = null
+    private var vpnResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,12 +31,14 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "checkPermissions" -> {
                     val isAccessibilityActive = BlockerAccessibilityService.isRunning()
-                    val isVpnActive = VpnService.prepare(this) == null
+                    val isVpnAuthorized = VpnService.prepare(this) == null
+                    val isVpnRunning = BlockerVpnService.isRunning()
                     val isAdminActive = dpm.isAdminActive(adminComponent)
                     
                     val permissions = HashMap<String, Boolean>()
                     permissions["accessibility"] = isAccessibilityActive
-                    permissions["vpn"] = isVpnActive
+                    permissions["vpn_authorized"] = isVpnAuthorized
+                    permissions["vpn_running"] = isVpnRunning
                     permissions["admin"] = isAdminActive
                     
                     result.success(permissions)
@@ -53,8 +56,8 @@ class MainActivity : FlutterActivity() {
                             "vpn" -> {
                                 val vpnIntent = VpnService.prepare(this)
                                 if (vpnIntent != null) {
+                                    vpnResult = result
                                     startActivityForResult(vpnIntent, 102)
-                                    result.success(true)
                                 } else {
                                     result.success(true) // Already authorized
                                 }
@@ -103,6 +106,13 @@ class MainActivity : FlutterActivity() {
                     triggerMockBlockingEvent("Blocklists updated: ${domains.size} domains, ${keywords.size} keywords.")
                     result.success(true)
                 }
+                "updateAppBlockingModes" -> {
+                    val excluded = call.argument<List<String>>("excluded") ?: emptyList()
+                    val textBoxOnly = call.argument<List<String>>("textBoxOnly") ?: emptyList()
+                    
+                    BlockerAccessibilityService.setAppBlockingModes(excluded, textBoxOnly)
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -145,6 +155,17 @@ class MainActivity : FlutterActivity() {
             event["message"] = message
             event["timestamp"] = System.currentTimeMillis()
             eventSink?.success(event)
+        }
+    }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 102) {
+            if (resultCode == RESULT_OK) {
+                vpnResult?.success(true)
+            } else {
+                vpnResult?.success(false)
+            }
+            vpnResult = null
         }
     }
 }

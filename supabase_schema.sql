@@ -4,6 +4,8 @@ CREATE TABLE public.profiles (
   username TEXT UNIQUE NOT NULL,
   is_premium BOOLEAN DEFAULT FALSE NOT NULL,
   is_admin BOOLEAN DEFAULT FALSE NOT NULL,
+  is_supporter BOOLEAN DEFAULT FALSE NOT NULL,
+  buddy_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -91,6 +93,14 @@ ALTER TABLE public.habit_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage their own habit logs" 
   ON public.habit_logs FOR ALL USING (auth.uid() = user_id);
 
+CREATE POLICY "Buddies can view linked partner logs" 
+  ON public.habit_logs FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE profiles.id = habit_logs.user_id AND profiles.buddy_id = auth.uid()
+    )
+  );
+
 -- Create global_keywords table
 CREATE TABLE public.global_keywords (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -149,3 +159,25 @@ INSERT INTO public.global_domains (value) VALUES
   ('pornhub.com'),
   ('xvideos.com')
 ON CONFLICT (value) DO NOTHING;
+
+-- Create chat_messages table for supporter confessions
+CREATE TABLE public.chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  recipient_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  message TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow users to view their own messages"
+  ON public.chat_messages FOR SELECT USING (
+    auth.uid() = sender_id OR auth.uid() = recipient_id
+  );
+
+CREATE POLICY "Allow users to insert messages as sender"
+  ON public.chat_messages FOR INSERT WITH CHECK (
+    auth.uid() = sender_id
+  );

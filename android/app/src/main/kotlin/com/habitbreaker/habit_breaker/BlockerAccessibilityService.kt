@@ -24,9 +24,16 @@ class BlockerAccessibilityService : AccessibilityService() {
         private var instance: BlockerAccessibilityService? = null
         private var blockedKeywords: List<String> = listOf("hot girls", "fuck", "sex videos", "porn", "adult", "xxx")
         private var onBlockedCallback: ((String) -> Unit)? = null
+        private var dynamicExcludedPackages: Set<String> = emptySet()
+        private var dynamicTextBoxOnlyPackages: Set<String> = emptySet()
 
         fun setBlocklist(keywords: List<String>) {
             blockedKeywords = keywords.map { it.lowercase() }
+        }
+
+        fun setAppBlockingModes(excluded: List<String>, textBoxOnly: List<String>) {
+            dynamicExcludedPackages = excluded.toSet()
+            dynamicTextBoxOnlyPackages = textBoxOnly.toSet()
         }
 
         fun registerCallback(callback: (String) -> Unit) {
@@ -107,16 +114,30 @@ class BlockerAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
+    private fun isExcludedApp(appPackage: String): Boolean {
+        return appPackage == packageName || 
+               appPackage == launcherPackageName || 
+               EXCLUDED_PACKAGES.contains(appPackage) || 
+               dynamicExcludedPackages.contains(appPackage)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         val appPackage = event.packageName?.toString() ?: return
 
-        // Bypass completely if excluded app, launcher, or our own app
-        if (appPackage == packageName || 
-            appPackage == launcherPackageName || 
-            EXCLUDED_PACKAGES.contains(appPackage)) {
+        // Bypass completely if excluded app
+        if (isExcludedApp(appPackage)) {
             return
+        }
+
+        // Check if currently active foreground window belongs to an excluded app
+        val activeWindow = rootInActiveWindow
+        if (activeWindow != null) {
+            val activePackage = activeWindow.packageName?.toString()
+            if (activePackage != null && isExcludedApp(activePackage)) {
+                return
+            }
         }
 
         // 1. Scan direct event text content (catches keyboard typing inputs instantly)
@@ -166,13 +187,16 @@ class BlockerAccessibilityService : AccessibilityService() {
 
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
         val isBrowser = isBrowserApp(appPackage)
+        val isTextBoxOnly = dynamicTextBoxOnlyPackages.contains(appPackage)
         
-        // In browsers, only scan editable inputs (URL bar) or nodes rendered inside a WebView (page content).
-        // This ignores native autocomplete dropdown suggestions to prevent false blocks.
-        val shouldScan = if (isBrowser) {
+        val shouldScan = if (isExcludedApp(appPackage)) {
+            false
+        } else if (isTextBoxOnly) {
+            node.isEditable
+        } else if (isBrowser) {
             node.isEditable || isNodeInWebView(node)
         } else {
-            node.isEditable
+            true // Default to full scan for other apps
         }
 
         if (shouldScan) {

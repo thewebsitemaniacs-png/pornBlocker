@@ -55,7 +55,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               label: 'Dismiss',
               textColor: Colors.white,
               onPressed: () {
-                ref.read(authProvider.notifier).clearError();
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
               },
             ),
           ),

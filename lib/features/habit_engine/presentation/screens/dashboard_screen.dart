@@ -2,7 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/domain/entities/user_profile.dart';
 import '../../../blocking/presentation/providers/bypass_guard_provider.dart';
+import '../../../chat/presentation/screens/supporters_list_screen.dart';
+import '../../../chat/presentation/screens/supporter_inbox_screen.dart';
+import 'app_blocker_settings_screen.dart';
 import '../providers/habit_provider.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -12,16 +16,60 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAccessibilityState();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAccessibilityState();
+    }
+  }
+
+  Future<void> _checkAccessibilityState() async {
+    try {
+      final channel = ref.read(platformChannelServiceProvider);
+      final permissionsMap = await channel.checkPermissions();
+      final currentAccessibility = permissionsMap['accessibility'] ?? false;
+      final storage = ref.read(storageServiceProvider);
+      
+      final lastAccessibility = storage.settingsBox.get('last_accessibility_state', defaultValue: false) as bool;
+      
+      if (lastAccessibility && !currentAccessibility) {
+        await ref.read(habitLogsProvider.notifier).addLog(
+          'blocker_stopped',
+          {
+            'reason': 'Accessibility Service disabled by user in Settings',
+            'action': 'accessibility_disabled',
+          },
+        );
+      }
+      
+      await storage.settingsBox.put('last_accessibility_state', currentAccessibility);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final isPremium = authState.profile?.isPremium ?? false;
-
-    // Reactively watch lockout state to lock app interaction
     final bypassState = ref.watch(bypassGuardProvider);
+    final alerts = ref.watch(buddyNotificationProvider);
 
     if (bypassState.isLockoutActive && bypassState.lockoutUntil != null) {
       return LockoutOverlay(lockoutUntil: bypassState.lockoutUntil!);
@@ -30,77 +78,112 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final List<Widget> screens = [
       const _HabitTab(),
       const _BlockingTab(),
+      const _BuddyTab(),
+      const _AnalyticsTab(),
       const _ProfileTab(),
     ];
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
-      appBar: AppBar(
-        title: Text(
-          _currentIndex == 0
-              ? 'HABIT ENGINE'
-              : _currentIndex == 1
-                  ? 'NATIVE BLOCKER'
-                  : 'ANONYMOUS PROFILE',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.5,
-            color: Colors.white,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFF0F0E17),
+          appBar: AppBar(
+            title: Text(
+              _currentIndex == 0
+                  ? 'HABIT ENGINE'
+                  : _currentIndex == 1
+                      ? 'NATIVE BLOCKER'
+                      : _currentIndex == 2
+                          ? 'ACCOUNTABILITY'
+                          : _currentIndex == 3
+                              ? 'OBSIDIAN ANALYTICS'
+                              : 'ANONYMOUS PROFILE',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+                color: Colors.white,
+              ),
+            ),
+            centerTitle: true,
+            backgroundColor: const Color(0xFF1F1E29),
+            elevation: 0,
+            actions: [
+              if (isPremium)
+                IconButton(
+                  icon: const Icon(Icons.cloud_sync, color: Color(0xFFFF8906)),
+                  onPressed: () {
+                    ref.read(habitTasksProvider.notifier).sync();
+                    ref.read(habitLogsProvider.notifier).sync();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Synchronizing habits database with cloud...'),
+                        backgroundColor: const Color(0xFFFF8906),
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+          body: screens[_currentIndex],
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            backgroundColor: const Color(0xFF1F1E29),
+            selectedItemColor: const Color(0xFFFF8906),
+            unselectedItemColor: const Color(0xFFA7A9BE),
+            showSelectedLabels: true,
+            showUnselectedLabels: false,
+            type: BottomNavigationBarType.fixed,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.psychology_outlined),
+                activeIcon: Icon(Icons.psychology),
+                label: 'Habits',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.block_flipped),
+                activeIcon: Icon(Icons.block),
+                label: 'Blocker',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.people_outline),
+                activeIcon: Icon(Icons.people),
+                label: 'Buddy',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.analytics_outlined),
+                activeIcon: Icon(Icons.analytics),
+                label: 'Analytics',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.fingerprint),
+                activeIcon: Icon(Icons.fingerprint_rounded),
+                label: 'Profile',
+              ),
+            ],
           ),
         ),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF1F1E29),
-        elevation: 0,
-        actions: [
-          if (isPremium)
-            IconButton(
-              icon: const Icon(Icons.cloud_sync, color: Color(0xFFFF8906)),
-              onPressed: () {
-                ref.read(habitTasksProvider.notifier).sync();
-                ref.read(habitLogsProvider.notifier).sync();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Synchronizing habits database with cloud...'),
-                    backgroundColor: Color(0xFFFF8906),
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-      body: screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        backgroundColor: const Color(0xFF1F1E29),
-        selectedItemColor: const Color(0xFFFF8906),
-        unselectedItemColor: const Color(0xFFA7A9BE),
-        showSelectedLabels: true,
-        showUnselectedLabels: false,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.psychology_outlined),
-            activeIcon: Icon(Icons.psychology),
-            label: 'Habits',
+        if (alerts.isNotEmpty)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 16,
+            right: 16,
+            child: _FloatingAlertBanner(alert: alerts.first),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.block_flipped),
-            activeIcon: Icon(Icons.block),
-            label: 'Blocker',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.fingerprint),
-            activeIcon: Icon(Icons.fingerprint_rounded),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -554,7 +637,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   
   Map<String, bool> _permissionStates = {
     'accessibility': false,
-    'vpn': false,
+    'vpn_authorized': false,
+    'vpn_running': false,
     'admin': false,
   };
 
@@ -570,9 +654,24 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     try {
       final channel = ref.read(platformChannelServiceProvider);
       final permissionsMap = await channel.checkPermissions();
+      
+      final currentAccessibility = permissionsMap['accessibility'] ?? false;
+      final isVpnAuthorized = permissionsMap['vpn_authorized'] ?? false;
+      final isVpnRunning = permissionsMap['vpn_running'] ?? false;
+
+      final storage = ref.read(storageServiceProvider);
+      await storage.settingsBox.put('last_accessibility_state', currentAccessibility);
+
+      // Auto-start VPN service if permission is authorized and accessibility service is active, but VPN is not running.
+      if (currentAccessibility && isVpnAuthorized && !isVpnRunning) {
+        await channel.startBlocking();
+        final blocklist = ref.read(blocklistProvider);
+        await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
+      }
+
       setState(() {
         _permissionStates = permissionsMap;
-        _isBlockingActive = _permissionStates['accessibility']! && _permissionStates['vpn']!;
+        _isBlockingActive = currentAccessibility && (isVpnRunning || (isVpnAuthorized && !_isBlockingActive));
       });
     } catch (_) {}
   }
@@ -583,7 +682,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
       await channel.requestPermissions(type);
       Timer.periodic(const Duration(seconds: 2), (timer) async {
         await _checkCurrentPermissions();
-        if (_permissionStates[type] == true) {
+        final checkKey = type == 'vpn' ? 'vpn_authorized' : type;
+        if (_permissionStates[checkKey] == true) {
           timer.cancel();
         }
       });
@@ -595,7 +695,11 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     
     if (targetValue) {
       await _checkCurrentPermissions();
-      final missingPermissions = _permissionStates.entries.where((e) => !e.value).map((e) => e.key).toList();
+      
+      final missingPermissions = <String>[];
+      if (!_permissionStates['accessibility']!) missingPermissions.add('accessibility');
+      if (!_permissionStates['vpn_authorized']!) missingPermissions.add('vpn');
+      if (!_permissionStates['admin']!) missingPermissions.add('admin');
       
       if (missingPermissions.isNotEmpty) {
         _showPermissionBottomSheet(missingPermissions);
@@ -604,7 +708,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
 
       await channel.startBlocking();
       
-      // Update blocklist with latest dynamic values from provider
       final blocklist = ref.read(blocklistProvider);
       await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
       
@@ -634,8 +737,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'SYSTEM PERMISSIONS REQUIRED',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                     'SYSTEM PERMISSIONS REQUIRED',
+                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -665,7 +768,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('2. Local VPN Connection', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     subtitle: const Text('Enforces DNS sinkholes on domain blocks', style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12)),
-                    trailing: _permissionStates['vpn']!
+                    trailing: _permissionStates['vpn_authorized']!
                         ? const Icon(Icons.check_circle, color: Colors.green)
                         : ElevatedButton(
                             onPressed: () {
@@ -913,6 +1016,7 @@ class _ProfileTab extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'CalmingExplorer2019';
     final isPremium = authState.profile?.isPremium ?? false;
+    final isSupporter = authState.profile?.isSupporter ?? false;
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -1007,6 +1111,13 @@ class _ProfileTab extends ConsumerWidget {
                     isPremium ? 'Downgraded to Free tier. Syncing paused.' : 'Upgraded to Premium! Database syncing started.',
                   ),
                   backgroundColor: const Color(0xFFFF8906),
+                  action: SnackBarAction(
+                    label: 'Dismiss',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    },
+                  ),
                 ),
               );
             },
@@ -1034,18 +1145,32 @@ class _ProfileTab extends ConsumerWidget {
                   await ref.read(habitLogsProvider.notifier).sync();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Sync successful!'),
+                      SnackBar(
+                        content: const Text('Sync successful!'),
                         backgroundColor: Colors.green,
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          },
+                        ),
                       ),
                     );
                   }
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Sync failed. Please check connection.'),
+                      SnackBar(
+                        content: const Text('Sync failed. Please check connection.'),
                         backgroundColor: Colors.redAccent,
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          },
+                        ),
                       ),
                     );
                   }
@@ -1065,6 +1190,59 @@ class _ProfileTab extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
           ],
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => isSupporter
+                      ? const SupporterInboxScreen()
+                      : const SupportersListScreen(),
+                ),
+              );
+            },
+            icon: Icon(isSupporter ? Icons.inbox : Icons.support_agent, size: 20),
+            label: Text(
+              isSupporter ? 'My Supporter Inbox' : 'Talk to a Supporter',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F1E29),
+              foregroundColor: const Color(0xFFFF8906),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFFF8906)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AppBlockerSettingsScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.settings_suggest, size: 20),
+            label: const Text(
+              'App Guard Settings',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F1E29),
+              foregroundColor: const Color(0xFFFF8906),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFFF8906)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           const Spacer(),
           TextButton.icon(
             onPressed: () {
@@ -1076,8 +1254,734 @@ class _ProfileTab extends ConsumerWidget {
               style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
             ),
           ),
+          ],
+        ),
+      );
+    }
+  }
+
+class _BuddyTab extends ConsumerStatefulWidget {
+  const _BuddyTab();
+
+  @override
+  ConsumerState<_BuddyTab> createState() => _BuddyTabState();
+}
+
+class _BuddyTabState extends ConsumerState<_BuddyTab> {
+  final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false;
+  UserProfile? _searchResult;
+  String? _searchError;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _performSearch() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
+
+    setState(() {
+      _isSearching = true;
+      _searchResult = null;
+      _searchError = null;
+    });
+
+    final authNotifier = ref.read(authProvider.notifier);
+    final result = await authNotifier.searchBuddy(query);
+
+    setState(() {
+      _isSearching = false;
+      if (result != null) {
+        _searchResult = result;
+      } else {
+        _searchError = 'User not found. Check spelling of their username.';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    final currentProfile = authState.profile;
+    final linkedPartnersAsync = ref.watch(linkedPartnersProvider);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'YOUR ACCOUNTABILITY BUDDY',
+            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 8),
+          if (currentProfile?.buddyId != null) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F1E29),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF2E2F3E)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_user, color: Color(0xFFFF8906)),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Linked Accountability Partner', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        SizedBox(height: 2),
+                        Text('Your habit logs are visible to this buddy.', style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      ref.read(authProvider.notifier).unlinkBuddy();
+                    },
+                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    child: const Text('UNLINK'),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F1E29),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF2E2F3E)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Add a Buddy to keep you accountable. Search by their anonymous username:',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            hintText: 'Search Username (e.g. CalmEagle2019)',
+                            hintStyle: TextStyle(color: Colors.white30, fontSize: 13),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: _isSearching
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF8906)))
+                            : const Icon(Icons.search, color: Color(0xFFFF8906)),
+                        onPressed: _performSearch,
+                      ),
+                    ],
+                  ),
+                  if (_searchError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_searchError!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  ],
+                  if (_searchResult != null) ...[
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFF2E2F3E)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_searchResult!.username, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ElevatedButton(
+                          onPressed: () {
+                            ref.read(authProvider.notifier).linkBuddy(_searchResult!.id);
+                            setState(() {
+                              _searchResult = null;
+                              _searchController.clear();
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF8906)),
+                          child: const Text('LINK BUDDY', style: TextStyle(color: Colors.black, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          
+          const SizedBox(height: 32),
+
+          const Text(
+            'PARTNERS YOU ARE OVERSEEING',
+            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 8),
+          linkedPartnersAsync.when(
+            data: (partners) {
+              if (partners.isEmpty) {
+                return const Card(
+                  color: Color(0xFF1F1E29),
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      'No users have linked you as their buddy yet. Ask them to search for your username on their app!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 13),
+                    ),
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: partners.length,
+                itemBuilder: (context, index) {
+                  final partner = partners[index];
+                  return _PartnerLogTile(partner: partner);
+                },
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF8906))),
+            error: (err, _) => Center(child: Text('Error loading partners: $err', style: const TextStyle(color: Colors.red))),
+          ),
         ],
       ),
     );
   }
 }
+
+class _PartnerLogTile extends ConsumerStatefulWidget {
+  final UserProfile partner;
+
+  const _PartnerLogTile({required this.partner});
+
+  @override
+  ConsumerState<_PartnerLogTile> createState() => _PartnerLogTileState();
+}
+
+class _PartnerLogTileState extends ConsumerState<_PartnerLogTile> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1E29),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF2E2F3E)),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(widget.partner.username, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: const Text('Linked Partner', style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 11)),
+            trailing: Icon(
+              _isExpanded ? Icons.expand_less : Icons.expand_more,
+              color: const Color(0xFFFF8906),
+            ),
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+          ),
+          if (_isExpanded) ...[
+            const Divider(color: Color(0xFF2E2F3E), height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Consumer(
+                builder: (context, ref, child) {
+                  final logsAsync = ref.watch(partnerLogsProvider(widget.partner.id));
+
+                  return logsAsync.when(
+                    data: (logs) {
+                      if (logs.isEmpty) {
+                        return const Text('No log entries registered.', style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12));
+                      }
+
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: logs.length > 5 ? 5 : logs.length,
+                        itemBuilder: (context, logIndex) {
+                          final log = logs[logIndex];
+                          final isBlock = log.eventType == 'block_triggered' || log.eventType == 'blocker_stopped';
+                          final icon = isBlock ? Icons.warning_amber_rounded : Icons.info_outline;
+                          final iconColor = isBlock ? Colors.redAccent : const Color(0xFFFF8906);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(
+                              children: [
+                                Icon(icon, size: 14, color: iconColor),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${log.eventType.replaceAll('_', ' ').toUpperCase()}: ${log.payload['title'] ?? log.payload['status'] ?? ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ),
+                                Text(
+                                  '${log.loggedAt.hour}:${log.loggedAt.minute.toString().padLeft(2, '0')}',
+                                  style: const TextStyle(color: Color(0xFFA7A9BE), fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF8906)))),
+                    error: (err, _) => Text('Error: $err', style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingAlertBanner extends ConsumerWidget {
+  final BuddyAlert alert;
+
+  const _FloatingAlertBanner({required this.alert});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F1E29),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.redAccent.withOpacity(0.8), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'ALERT: ${alert.partnerName.toUpperCase()}',
+                    style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    alert.message,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+              onPressed: () {
+                ref.read(buddyNotificationProvider.notifier).dismissAlert(alert.id);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalyticsTab extends ConsumerWidget {
+  const _AnalyticsTab();
+
+  String _toDateString(DateTime dt) {
+    return "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final analyticsAsync = ref.watch(analyticsProvider);
+
+    return analyticsAsync.when(
+      data: (data) => SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildStreakSection(data),
+            const SizedBox(height: 24),
+            _buildHeatmapSection(data),
+            const SizedBox(height: 24),
+            _buildUrgesChartSection(data),
+            const SizedBox(height: 24),
+            _buildBadgesSection(data),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+      loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF8906))),
+      error: (err, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text('Error loading analytics: $err', style: const TextStyle(color: Colors.redAccent)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStreakSection(AnalyticsState data) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1E29),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF2E2F3E)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          Column(
+            children: [
+              const Icon(Icons.local_fire_department, color: Color(0xFFFF8906), size: 48),
+              const SizedBox(height: 8),
+              Text(
+                '${data.currentStreak} DAYS',
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Current Streak',
+                style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12),
+              ),
+            ],
+          ),
+          Container(width: 1, height: 60, color: const Color(0xFF2E2F3E)),
+          Column(
+            children: [
+              const Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 48),
+              const SizedBox(height: 8),
+              Text(
+                '${data.longestStreak} DAYS',
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Longest Streak',
+                style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeatmapSection(AnalyticsState data) {
+    final days = <DateTime>[];
+    final today = DateTime.now();
+    for (int i = 34; i >= 0; i--) {
+      days.add(today.subtract(Duration(days: i)));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1E29),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF2E2F3E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '35-DAY FOCUS CALENDAR',
+            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 16),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: days.length,
+            itemBuilder: (context, index) {
+              final date = days[index];
+              final dateStr = _toDateString(date);
+              
+              Color cellColor = const Color(0xFF0F0E17);
+              String tooltip = "No activity recorded";
+
+              if (data.violationDays.contains(dateStr)) {
+                cellColor = Colors.redAccent.withOpacity(0.8);
+                tooltip = "Urge recorded";
+              } else if (data.cleanDays.contains(dateStr)) {
+                cellColor = const Color(0xFF2E8B57);
+                tooltip = "Clean day focus maintained";
+              }
+
+              return Tooltip(
+                message: "${date.day}/${date.month} - $tooltip",
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: cellColor,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: cellColor == const Color(0xFF0F0E17)
+                          ? const Color(0xFF2E2F3E)
+                          : Colors.transparent,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _ColorLegendItem(color: Color(0xFF0F0E17), label: 'Inactive'),
+              SizedBox(width: 12),
+              _ColorLegendItem(color: Color(0xFF2E8B57), label: 'Clean'),
+              SizedBox(width: 12),
+              _ColorLegendItem(color: Colors.redAccent, label: 'Triggered'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUrgesChartSection(AnalyticsState data) {
+    int night = 0;
+    int morning = 0;
+    int afternoon = 0;
+    int evening = 0;
+
+    data.hourlyUrgeDistribution.forEach((hour, count) {
+      if (hour >= 0 && hour < 6) night += count;
+      else if (hour >= 6 && hour < 12) morning += count;
+      else if (hour >= 12 && hour < 18) afternoon += count;
+      else if (hour >= 18 && hour < 24) evening += count;
+    });
+
+    final total = night + morning + afternoon + evening;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1E29),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF2E2F3E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'URGES BY TIME OF DAY',
+            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _BarWidget(label: 'Night\n(12am-6am)', count: night, total: total),
+              _BarWidget(label: 'Morning\n(6am-12pm)', count: morning, total: total),
+              _BarWidget(label: 'Afternoon\n(12pm-6pm)', count: afternoon, total: total),
+              _BarWidget(label: 'Evening\n(6pm-12am)', count: evening, total: total),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBadgesSection(AnalyticsState data) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1E29),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF2E2F3E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'FOCUS MILESTONES & BADGES',
+            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          ),
+          const SizedBox(height: 16),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.2,
+            ),
+            itemCount: data.badges.length,
+            itemBuilder: (context, index) {
+              final badge = data.badges[index];
+              final Color cardColor = badge.isUnlocked ? const Color(0xFF2E2F3E) : const Color(0xFF16151D);
+              final Color accentColor = badge.isUnlocked ? const Color(0xFFFF8906) : Colors.white24;
+
+              IconData badgeIcon = Icons.lock_outline;
+              if (badge.isUnlocked) {
+                if (badge.title.contains('Step')) badgeIcon = Icons.directions_walk_rounded;
+                else if (badge.title.contains('Bronze')) badgeIcon = Icons.shield_outlined;
+                else if (badge.title.contains('Obsidian')) badgeIcon = Icons.shield;
+                else if (badge.title.contains('Consistency')) badgeIcon = Icons.verified_rounded;
+                else if (badge.title.contains('Champion')) badgeIcon = Icons.emoji_events;
+                else badgeIcon = Icons.military_tech_rounded;
+              }
+
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: badge.isUnlocked ? const Color(0xFFFF8906).withOpacity(0.3) : const Color(0xFF2E2F3E),
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(badgeIcon, color: accentColor, size: 32),
+                    const SizedBox(height: 8),
+                    Text(
+                      badge.title,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: badge.isUnlocked ? Colors.white : Colors.white30,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      badge.description,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: badge.isUnlocked ? const Color(0xFFA7A9BE) : Colors.white12,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorLegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _ColorLegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: color == const Color(0xFF0F0E17) ? const Color(0xFF2E2F3E) : Colors.transparent),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(color: Color(0xFFA7A9BE), fontSize: 11)),
+      ],
+    );
+  }
+}
+
+class _BarWidget extends StatelessWidget {
+  final String label;
+  final int count;
+  final int total;
+
+  const _BarWidget({required this.label, required this.count, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final double percent = total > 0 ? count / total : 0.0;
+    final double barHeight = 100 * percent;
+
+    return Column(
+      children: [
+        Text(
+          '$count',
+          style: TextStyle(
+            color: count > 0 ? const Color(0xFFFF8906) : Colors.white30,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: 32,
+          height: 100,
+          alignment: Alignment.bottomCenter,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F0E17),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFF2E2F3E)),
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            width: 32,
+            height: barHeight == 0 ? 4 : barHeight,
+            decoration: BoxDecoration(
+              color: barHeight == 0 ? Colors.white12 : const Color(0xFFFF8906),
+              borderRadius: BorderRadius.circular(5),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFFA7A9BE), fontSize: 10),
+        ),
+      ],
+    );
+  }
+}
+

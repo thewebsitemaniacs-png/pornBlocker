@@ -128,6 +128,66 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  Future<UserProfile?> searchBuddy(String username) async {
+    try {
+      final data = await _client.from('profiles').select().eq('username', username).maybeSingle();
+      if (data != null) {
+        return UserProfile.fromJson(Map<String, dynamic>.from(data));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> linkBuddy(String buddyId) async {
+    final profile = state.profile;
+    if (profile == null) return;
+
+    state = state.copyWith(user: state.user, profile: profile, isLoading: true);
+    try {
+      final updatedProfileData = await _client
+          .from('profiles')
+          .update({'buddy_id': buddyId})
+          .eq('id', profile.id)
+          .select()
+          .single();
+
+      final updatedProfile = UserProfile.fromJson(Map<String, dynamic>.from(updatedProfileData));
+      state = state.copyWith(user: state.user, profile: updatedProfile, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        user: state.user, 
+        profile: profile, 
+        isLoading: false, 
+        errorMessage: 'Failed to link accountability partner.'
+      );
+    }
+  }
+
+  Future<void> unlinkBuddy() async {
+    final profile = state.profile;
+    if (profile == null) return;
+
+    state = state.copyWith(user: state.user, profile: profile, isLoading: true);
+    try {
+      final updatedProfileData = await _client
+          .from('profiles')
+          .update({'buddy_id': null})
+          .eq('id', profile.id)
+          .select()
+          .single();
+
+      final updatedProfile = UserProfile.fromJson(Map<String, dynamic>.from(updatedProfileData));
+      state = state.copyWith(user: state.user, profile: updatedProfile, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        user: state.user, 
+        profile: profile, 
+        isLoading: false, 
+        errorMessage: 'Failed to unlink accountability partner.'
+      );
+    }
+  }
+
   void clearError() {
     state = state.copyWith(user: state.user, profile: state.profile, errorMessage: null);
   }
