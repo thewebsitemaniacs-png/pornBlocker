@@ -133,9 +133,9 @@ CREATE POLICY "Allow admins to manage global domains"
 
 -- Populate with initial default keywords
 INSERT INTO public.global_keywords (value) VALUES
-  ('shorts'),
-  ('reels'),
-  ('doomscroll'),
+  ('hot girls'),
+  ('fuck'),
+  ('sex videos'),
   ('porn'),
   ('adult'),
   ('xxx')

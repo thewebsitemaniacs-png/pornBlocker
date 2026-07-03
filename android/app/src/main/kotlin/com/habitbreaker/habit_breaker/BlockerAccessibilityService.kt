@@ -22,7 +22,7 @@ class BlockerAccessibilityService : AccessibilityService() {
 
     companion object {
         private var instance: BlockerAccessibilityService? = null
-        private var blockedKeywords: List<String> = listOf("shorts", "reels", "doomscroll", "porn", "adult", "xxx")
+        private var blockedKeywords: List<String> = listOf("hot girls", "fuck", "sex videos", "porn", "adult", "xxx")
         private var onBlockedCallback: ((String) -> Unit)? = null
 
         fun setBlocklist(keywords: List<String>) {
@@ -148,10 +148,34 @@ class BlockerAccessibilityService : AccessibilityService() {
         // No-op
     }
 
+    private fun isNodeInWebView(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        while (current != null) {
+            val className = current.className?.toString()
+            if (className != null && (className.contains("WebView") || className.contains("browser.engine"))) {
+                return true
+            }
+            try {
+                current = current.parent
+            } catch (e: Exception) {
+                break
+            }
+        }
+        return false
+    }
+
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
         val isBrowser = isBrowserApp(appPackage)
-        // Browsers check all static nodes; social apps only check input fields
-        if (isBrowser || node.isEditable) {
+        
+        // In browsers, only scan editable inputs (URL bar) or nodes rendered inside a WebView (page content).
+        // This ignores native autocomplete dropdown suggestions to prevent false blocks.
+        val shouldScan = if (isBrowser) {
+            node.isEditable || isNodeInWebView(node)
+        } else {
+            node.isEditable
+        }
+
+        if (shouldScan) {
             val text = node.text?.toString()?.lowercase()
             val contentDesc = node.contentDescription?.toString()?.lowercase()
 

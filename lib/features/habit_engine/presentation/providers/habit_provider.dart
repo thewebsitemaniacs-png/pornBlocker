@@ -197,7 +197,7 @@ class BlocklistState {
 
 class BlocklistNotifier extends Notifier<BlocklistState> {
   static const List<String> _defaultDomains = ['youtube.com', 'instagram.com', 'tiktok.com', 'pornhub.com', 'xvideos.com'];
-  static const List<String> _defaultKeywords = ['shorts', 'reels', 'doomscroll', 'porn', 'adult', 'xxx'];
+  static const List<String> _defaultKeywords = ['hot girls', 'fuck', 'sex videos', 'porn', 'adult', 'xxx'];
 
   @override
   BlocklistState build() {
