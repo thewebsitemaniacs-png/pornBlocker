@@ -114,11 +114,21 @@ class BlockerAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
+    private fun isKeyboardApp(packageName: String): Boolean {
+        val lower = packageName.lowercase()
+        return lower.contains("inputmethod") || 
+               lower.contains("keyboard") || 
+               lower.contains("ime") || 
+               lower.contains("gboard") || 
+               lower.contains("swiftkey")
+    }
+
     private fun isExcludedApp(appPackage: String): Boolean {
         return appPackage == packageName || 
                appPackage == launcherPackageName || 
                EXCLUDED_PACKAGES.contains(appPackage) || 
-               dynamicExcludedPackages.contains(appPackage)
+               dynamicExcludedPackages.contains(appPackage) ||
+               isKeyboardApp(appPackage)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -141,7 +151,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         }
 
         // 1. Scan direct event text content (catches keyboard typing inputs instantly)
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED && !isBrowserApp(appPackage)) {
             try {
                 val eventTextList = event.text
                 if (eventTextList != null) {
@@ -194,7 +204,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         } else if (isTextBoxOnly) {
             node.isEditable
         } else if (isBrowser) {
-            node.isEditable || isNodeInWebView(node)
+            isNodeInWebView(node) // ONLY scan webpage/HTML rendering views, bypassing native address bars and dropdown suggestions
         } else {
             true // Default to full scan for other apps
         }
