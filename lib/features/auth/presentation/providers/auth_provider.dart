@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/user_profile.dart';
 
 // Provides the Supabase Client instance
-final supabaseClientProvider = Provider<SupabaseClient>((ref) {
+final supabaseClientProvider = Provider<dynamic>((ref) {
   return Supabase.instance.client;
 });
 
@@ -37,7 +37,7 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
-  late final SupabaseClient _client;
+  late final dynamic _client;
 
   @override
   AuthState build() {

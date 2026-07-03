@@ -3,6 +3,7 @@ CREATE TABLE public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   is_premium BOOLEAN DEFAULT FALSE NOT NULL,
+  is_admin BOOLEAN DEFAULT FALSE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -44,10 +45,11 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, is_premium)
+  INSERT INTO public.profiles (id, username, is_premium, is_admin)
   VALUES (
     new.id,
     public.generate_random_username(),
+    false,
     false
   );
   RETURN NEW;
@@ -88,3 +90,62 @@ ALTER TABLE public.habit_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can manage their own habit logs" 
   ON public.habit_logs FOR ALL USING (auth.uid() = user_id);
+
+-- Create global_keywords table
+CREATE TABLE public.global_keywords (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  value TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+ALTER TABLE public.global_keywords ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to global keywords" 
+  ON public.global_keywords FOR SELECT USING (true);
+
+CREATE POLICY "Allow admins to manage global keywords" 
+  ON public.global_keywords FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE profiles.id = auth.uid() AND profiles.is_admin = true
+    )
+  );
+
+-- Create global_domains table
+CREATE TABLE public.global_domains (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  value TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+ALTER TABLE public.global_domains ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to global domains" 
+  ON public.global_domains FOR SELECT USING (true);
+
+CREATE POLICY "Allow admins to manage global domains" 
+  ON public.global_domains FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE profiles.id = auth.uid() AND profiles.is_admin = true
+    )
+  );
+
+-- Populate with initial default keywords
+INSERT INTO public.global_keywords (value) VALUES
+  ('shorts'),
+  ('reels'),
+  ('doomscroll'),
+  ('porn'),
+  ('adult'),
+  ('xxx')
+ON CONFLICT (value) DO NOTHING;
+
+-- Populate with initial default domains
+INSERT INTO public.global_domains (value) VALUES
+  ('youtube.com'),
+  ('instagram.com'),
+  ('tiktok.com'),
+  ('pornhub.com'),
+  ('xvideos.com')
+ON CONFLICT (value) DO NOTHING;

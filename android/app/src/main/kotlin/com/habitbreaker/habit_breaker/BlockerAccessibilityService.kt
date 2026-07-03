@@ -50,6 +50,26 @@ class BlockerAccessibilityService : AccessibilityService() {
         "com.google.android.packageinstaller"
     )
 
+    private val BROWSER_PACKAGES = setOf(
+        "com.android.chrome",
+        "org.mozilla.firefox",
+        "com.sec.android.app.sbrowser",
+        "com.opera.browser",
+        "com.opera.mini.native",
+        "com.brave.browser",
+        "com.duckduckgo.mobile.android",
+        "com.android.browser",
+        "com.microsoft.emmx",
+        "com.vivaldi.browser",
+        "com.kiwibrowser.browser"
+    )
+
+    private fun isBrowserApp(packageName: String): Boolean {
+        if (BROWSER_PACKAGES.contains(packageName)) return true
+        val lower = packageName.lowercase()
+        return lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") || lower.contains("webview")
+    }
+
     private val WARNING_PACKAGES = setOf(
         "com.whatsapp",
         "org.telegram.messenger",
@@ -99,9 +119,29 @@ class BlockerAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Scan windows content changes or state updates
-        val source = rootInActiveWindow ?: return
-        checkNodeAndChildren(source, appPackage)
+        // 1. Scan direct event text content (catches keyboard typing inputs instantly)
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            try {
+                val eventTextList = event.text
+                if (eventTextList != null) {
+                    for (t in eventTextList) {
+                        val textStr = t?.toString()?.lowercase()
+                        if (textStr != null && matchesBlocklist(textStr)) {
+                            handleBlockOrWarning(textStr, appPackage)
+                            return
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore event parsing errors
+            }
+        }
+
+        // 2. Scan window contents (catches rendered/scrolled views)
+        val source = rootInActiveWindow
+        if (source != null) {
+            checkNodeAndChildren(source, appPackage)
+        }
     }
 
     override fun onInterrupt() {
@@ -109,17 +149,20 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
-        val text = node.text?.toString()?.lowercase()
-        val contentDesc = node.contentDescription?.toString()?.lowercase()
+        val isBrowser = isBrowserApp(appPackage)
+        // Browsers check all static nodes; social apps only check input fields
+        if (isBrowser || node.isEditable) {
+            val text = node.text?.toString()?.lowercase()
+            val contentDesc = node.contentDescription?.toString()?.lowercase()
 
-        // Match node text or content description
-        if (text != null && matchesBlocklist(text)) {
-            handleBlockOrWarning(text, appPackage)
-            return
-        }
-        if (contentDesc != null && matchesBlocklist(contentDesc)) {
-            handleBlockOrWarning(contentDesc, appPackage)
-            return
+            if (text != null && matchesBlocklist(text)) {
+                handleBlockOrWarning(text, appPackage)
+                return
+            }
+            if (contentDesc != null && matchesBlocklist(contentDesc)) {
+                handleBlockOrWarning(contentDesc, appPackage)
+                return
+            }
         }
 
         for (i in 0 until node.childCount) {

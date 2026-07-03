@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../blocking/presentation/providers/bypass_guard_provider.dart';
 import '../providers/habit_provider.dart';
-import '../../domain/entities/habit_task.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -559,13 +558,9 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     'admin': false,
   };
 
-  final List<String> _domains = ['youtube.com', 'instagram.com', 'tiktok.com', 'pornhub.com', 'xvideos.com'];
-  final List<String> _keywords = ['shorts', 'reels', 'doomscroll', 'porn', 'adult', 'xxx'];
-
   @override
   void initState() {
     super.initState();
-    // Fetch initial platform permission states on boot
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCurrentPermissions();
     });
@@ -575,21 +570,17 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     try {
       final channel = ref.read(platformChannelServiceProvider);
       final permissionsMap = await channel.checkPermissions();
-      if (permissionsMap is Map) {
-        setState(() {
-          _permissionStates = Map<String, bool>.from(permissionsMap);
-          // Auto-enable blocking state representation if services are running
-          _isBlockingActive = _permissionStates['accessibility']! && _permissionStates['vpn']!;
-        });
-      }
+      setState(() {
+        _permissionStates = permissionsMap;
+        _isBlockingActive = _permissionStates['accessibility']! && _permissionStates['vpn']!;
+      });
     } catch (_) {}
   }
 
   Future<void> _requestSinglePermission(String type) async {
     try {
       final channel = ref.read(platformChannelServiceProvider);
-      await channel.requestPermissions(type); // Triggers native activity
-      // Recheck states in background
+      await channel.requestPermissions(type);
       Timer.periodic(const Duration(seconds: 2), (timer) async {
         await _checkCurrentPermissions();
         if (_permissionStates[type] == true) {
@@ -603,7 +594,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     final channel = ref.read(platformChannelServiceProvider);
     
     if (targetValue) {
-      // 1. Verify permissions are granted before starting services
       await _checkCurrentPermissions();
       final missingPermissions = _permissionStates.entries.where((e) => !e.value).map((e) => e.key).toList();
       
@@ -612,16 +602,17 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
         return;
       }
 
-      // 2. Start services on Native channels
       await channel.startBlocking();
-      await channel.updateBlocklist(_domains, _keywords);
+      
+      // Update blocklist with latest dynamic values from provider
+      final blocklist = ref.read(blocklistProvider);
+      await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
       
       ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'status': true});
       setState(() {
         _isBlockingActive = true;
       });
     } else {
-      // Deactivation Gated via the 60-Second Bypass Delay Timer
       ref.read(bypassGuardProvider.notifier).startBypassRequest(60);
     }
   }
@@ -653,7 +644,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                   ),
                   const SizedBox(height: 24),
                   
-                  // Accessibility Row
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('1. Accessibility Service', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -671,7 +661,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                   ),
                   const Divider(color: Color(0xFF2E2F3E)),
 
-                  // VPN Row
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('2. Local VPN Connection', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -689,7 +678,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                   ),
                   const Divider(color: Color(0xFF2E2F3E)),
 
-                  // Device Admin Row
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('3. Device Administrator', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -717,13 +705,15 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   @override
   Widget build(BuildContext context) {
     final bypassState = ref.watch(bypassGuardProvider);
+    final blocklistState = ref.watch(blocklistProvider);
+    final domains = blocklistState.domains;
+    final keywords = blocklistState.keywords;
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Active state or countdown delay notifier
           if (bypassState.isBypassRequested) ...[
             Container(
               padding: const EdgeInsets.all(20),
@@ -741,10 +731,10 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                     style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
-                  Text(
+                  const Text(
                     'Blocker disabling request starts a 60s cooldown. Take a deep breath.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: const Color(0xFFA7A9BE), fontSize: 12),
+                    style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -783,7 +773,6 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
             ),
             const SizedBox(height: 24),
           ] else ...[
-            // Default active switch card
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -838,15 +827,26 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
             const SizedBox(height: 24),
           ],
 
-          const Text(
-            'ACTIVE WEB DOMAINS FILTERED',
-            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'ACTIVE WEB DOMAINS FILTERED',
+                style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+              ),
+              if (blocklistState.isLoading)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFFF8906)),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _domains
+            children: domains
                 .map((d) => Chip(
                       label: Text(d, style: const TextStyle(color: Colors.white, fontSize: 11)),
                       backgroundColor: const Color(0xFF1F1E29),
@@ -856,15 +856,26 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
           ),
           const SizedBox(height: 24),
           
-          const Text(
-            'ACTIVE KEYWORDS BLOCKED',
-            style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'ACTIVE KEYWORDS BLOCKED',
+                style: TextStyle(color: Color(0xFFA7A9BE), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+              ),
+              if (blocklistState.isLoading)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFFF8906)),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _keywords
+            children: keywords
                 .map((k) => Chip(
                       label: Text(k, style: const TextStyle(color: Colors.white, fontSize: 11)),
                       backgroundColor: const Color(0xFF1F1E29),
@@ -874,9 +885,12 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
           ),
           const Spacer(),
           ElevatedButton.icon(
-            onPressed: _checkCurrentPermissions,
+            onPressed: () {
+              _checkCurrentPermissions();
+              ref.read(blocklistProvider.notifier).fetchAndSync();
+            },
             icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Refresh Permission Check'),
+            label: const Text('Sync Configurations'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E2F3E),
               foregroundColor: Colors.white,

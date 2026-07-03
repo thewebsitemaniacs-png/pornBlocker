@@ -1,4 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../domain/entities/habit_task.dart';
 import '../../domain/entities/habit_log.dart';

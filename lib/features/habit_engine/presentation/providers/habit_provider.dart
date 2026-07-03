@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
@@ -169,3 +170,92 @@ final platformChannelServiceProvider = Provider<PlatformChannelService>((ref) {
 
   return service;
 });
+
+class BlocklistState {
+  final List<String> domains;
+  final List<String> keywords;
+  final bool isLoading;
+
+  BlocklistState({
+    required this.domains,
+    required this.keywords,
+    this.isLoading = false,
+  });
+
+  BlocklistState copyWith({
+    List<String>? domains,
+    List<String>? keywords,
+    bool? isLoading,
+  }) {
+    return BlocklistState(
+      domains: domains ?? this.domains,
+      keywords: keywords ?? this.keywords,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
+}
+
+class BlocklistNotifier extends Notifier<BlocklistState> {
+  static const List<String> _defaultDomains = ['youtube.com', 'instagram.com', 'tiktok.com', 'pornhub.com', 'xvideos.com'];
+  static const List<String> _defaultKeywords = ['shorts', 'reels', 'doomscroll', 'porn', 'adult', 'xxx'];
+
+  @override
+  BlocklistState build() {
+    final storage = ref.watch(storageServiceProvider);
+    
+    final List<dynamic>? cachedDomains = storage.settingsBox.get('cached_domains');
+    final List<dynamic>? cachedKeywords = storage.settingsBox.get('cached_keywords');
+
+    final domains = cachedDomains?.map((e) => e.toString()).toList() ?? _defaultDomains;
+    final keywords = cachedKeywords?.map((e) => e.toString()).toList() ?? _defaultKeywords;
+
+    // Setup periodic polling timer (fallback for free tier databases lacking replication)
+    final pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      fetchAndSync();
+    });
+
+    ref.onDispose(() {
+      pollTimer.cancel();
+    });
+
+    // Trigger initial non-blocking cloud fetch
+    Future.microtask(() => fetchAndSync());
+
+    return BlocklistState(domains: domains, keywords: keywords);
+  }
+
+  Future<void> fetchAndSync() async {
+    if (!ref.mounted) return;
+    state = state.copyWith(isLoading: true);
+    final storage = ref.read(storageServiceProvider);
+    final client = ref.read(supabaseClientProvider);
+    final channel = ref.read(platformChannelServiceProvider);
+
+    try {
+      final domainsRes = await client.from('global_domains').select();
+      final keywordsRes = await client.from('global_keywords').select();
+
+      final List<String> fetchedDomains = (domainsRes as List).map((e) => e['value'] as String).toList();
+      final List<String> fetchedKeywords = (keywordsRes as List).map((e) => e['value'] as String).toList();
+
+      if (!ref.mounted) return;
+
+      await storage.settingsBox.put('cached_domains', fetchedDomains);
+      await storage.settingsBox.put('cached_keywords', fetchedKeywords);
+      
+      state = BlocklistState(domains: fetchedDomains, keywords: fetchedKeywords, isLoading: false);
+      
+      // Update Native platforms
+      await channel.updateBlocklist(fetchedDomains, fetchedKeywords);
+    } catch (_) {
+      if (ref.mounted) {
+        state = state.copyWith(isLoading: false);
+      }
+    }
+  }
+}
+
+final blocklistProvider = NotifierProvider<BlocklistNotifier, BlocklistState>(() {
+  return BlocklistNotifier();
+});
+
