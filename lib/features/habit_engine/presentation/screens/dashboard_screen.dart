@@ -658,12 +658,14 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
       final currentAccessibility = permissionsMap['accessibility'] ?? false;
       final isVpnAuthorized = permissionsMap['vpn_authorized'] ?? false;
       final isVpnRunning = permissionsMap['vpn_running'] ?? false;
+      final isAdminActive = permissionsMap['admin'] ?? false;
 
       final storage = ref.read(storageServiceProvider);
       await storage.settingsBox.put('last_accessibility_state', currentAccessibility);
 
-      // Auto-start VPN service if permission is authorized and accessibility service is active, but VPN is not running.
-      if (currentAccessibility && isVpnAuthorized && !isVpnRunning) {
+      // Auto-start VPN service if ALL three permissions are granted, but VPN is not running.
+      final allGranted = currentAccessibility && isVpnAuthorized && isAdminActive;
+      if (allGranted && !isVpnRunning) {
         await channel.startBlocking();
         final blocklist = ref.read(blocklistProvider);
         await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
@@ -671,7 +673,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
 
       setState(() {
         _permissionStates = permissionsMap;
-        _isBlockingActive = currentAccessibility && (isVpnRunning || (isVpnAuthorized && !_isBlockingActive));
+        _isBlockingActive = allGranted && (isVpnRunning || !_isBlockingActive);
       });
     } catch (_) {}
   }
@@ -685,6 +687,17 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
         final checkKey = type == 'vpn' ? 'vpn_authorized' : type;
         if (_permissionStates[checkKey] == true) {
           timer.cancel();
+          
+          final currentAccessibility = _permissionStates['accessibility'] ?? false;
+          final isVpnAuthorized = _permissionStates['vpn_authorized'] ?? false;
+          final isAdminActive = _permissionStates['admin'] ?? false;
+          
+          if (currentAccessibility && isVpnAuthorized && isAdminActive) {
+            await channel.startBlocking();
+            final blocklist = ref.read(blocklistProvider);
+            await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
+            ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'status': true});
+          }
         }
       });
     } catch (_) {}
