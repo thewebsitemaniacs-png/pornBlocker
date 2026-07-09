@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 class PlatformChannelService {
-  static const MethodChannel _methodChannel = MethodChannel('com.habitbreaker.app/blocking');
-  static const EventChannel _eventChannel = EventChannel('com.habitbreaker.app/blocking_events');
+  static const MethodChannel _methodChannel = MethodChannel('com.joshua.flee.app/blocking');
+  static const EventChannel _eventChannel = EventChannel('com.joshua.flee.app/blocking_events');
 
   StreamSubscription? _eventSubscription;
 

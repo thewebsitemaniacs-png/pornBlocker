@@ -1,4 +1,4 @@
-package com.habitbreaker.habit_breaker
+package com.joshua.flee
 
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
@@ -70,7 +70,7 @@ class BlockerVpnService : VpnService(), Runnable {
         try {
             // Establish local dual-stack DNS redirect.
             val builder = Builder()
-            builder.setSession("Curb Habit Blocker")
+            builder.setSession("flee Blocker")
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer("8.8.8.8")
                 .addRoute("8.8.8.8", 32)

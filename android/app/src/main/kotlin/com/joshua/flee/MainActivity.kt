@@ -1,4 +1,4 @@
-package com.habitbreaker.habit_breaker
+package com.joshua.flee
 
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
@@ -15,8 +15,8 @@ import android.content.ComponentName
 import java.util.HashMap
 
 class MainActivity : FlutterActivity() {
-    private val METHOD_CHANNEL = "com.habitbreaker.app/blocking"
-    private val EVENT_CHANNEL = "com.habitbreaker.app/blocking_events"
+    private val METHOD_CHANNEL = "com.joshua.flee.app/blocking"
+    private val EVENT_CHANNEL = "com.joshua.flee.app/blocking_events"
     private var eventSink: EventChannel.EventSink? = null
     private var vpnResult: MethodChannel.Result? = null
 

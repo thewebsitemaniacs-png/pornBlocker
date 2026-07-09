@@ -1,4 +1,4 @@
-package com.habitbreaker.habit_breaker
+package com.joshua.flee
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
@@ -17,6 +17,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
 import android.widget.Toast
 import java.util.HashMap
+import java.util.Locale
 
 class BlockerAccessibilityService : AccessibilityService() {
 
@@ -384,7 +385,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         performGlobalAction(GLOBAL_ACTION_BACK)
 
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(this, "Content blocked by Curb Habit", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Content blocked by flee", Toast.LENGTH_SHORT).show()
         }
 
         // Notify app layer via event callbacks

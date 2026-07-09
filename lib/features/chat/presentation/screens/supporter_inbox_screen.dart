@@ -12,7 +12,7 @@ class SupporterInboxScreen extends ConsumerWidget {
     final unreadCounts = ref.watch(unreadCountsProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
+      backgroundColor: const Color(0xFFFFFFFF),
       appBar: AppBar(
         title: const Text(
           'SUPPORTER CHAT INBOX',
@@ -20,14 +20,14 @@ class SupporterInboxScreen extends ConsumerWidget {
             fontSize: 16,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.5,
-            color: Colors.white,
+            color: const Color(0xFF1E293B),
           ),
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1F1E29),
+        backgroundColor: const Color(0xFFF4F7FB),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: const Color(0xFF1E293B)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -40,7 +40,7 @@ class SupporterInboxScreen extends ConsumerWidget {
                 child: Text(
                   'Your inbox is empty. Client confessions will appear here when they send you messages.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 14),
+                  style: TextStyle(color: Color(0xFF475569), fontSize: 14),
                 ),
               ),
             );
@@ -56,10 +56,10 @@ class SupporterInboxScreen extends ConsumerWidget {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F1E29),
+                  color: const Color(0xFFF4F7FB),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: unreadCount > 0 ? const Color(0xFFFF8906) : const Color(0xFF2E2F3E),
+                    color: unreadCount > 0 ? const Color(0xFF5AB2FF) : const Color(0xFFE2EAF4),
                     width: unreadCount > 0 ? 1.5 : 1.0,
                   ),
                 ),
@@ -67,20 +67,20 @@ class SupporterInboxScreen extends ConsumerWidget {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   leading: CircleAvatar(
                     backgroundColor: unreadCount > 0
-                        ? const Color(0xFFFF8906).withOpacity(0.2)
-                        : const Color(0xFF2E2F3E),
+                        ? const Color(0xFF5AB2FF).withOpacity(0.2)
+                        : const Color(0xFFE2EAF4),
                     child: Icon(
                       Icons.person_outline,
-                      color: unreadCount > 0 ? const Color(0xFFFF8906) : const Color(0xFFA7A9BE),
+                      color: unreadCount > 0 ? const Color(0xFF5AB2FF) : const Color(0xFF475569),
                     ),
                   ),
                   title: Text(
                     chatPartner.username,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold),
                   ),
                   subtitle: const Text(
                     'Anonymous Client Message',
-                    style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12),
+                    style: TextStyle(color: Color(0xFF475569), fontSize: 12),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -95,14 +95,14 @@ class SupporterInboxScreen extends ConsumerWidget {
                           child: Text(
                             '$unreadCount',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: const Color(0xFF1E293B),
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                       const SizedBox(width: 8),
-                      const Icon(Icons.chevron_right, color: Color(0xFFA7A9BE)),
+                      const Icon(Icons.chevron_right, color: Color(0xFF475569)),
                     ],
                   ),
                   onTap: () {
@@ -120,7 +120,7 @@ class SupporterInboxScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF8906))),
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF5AB2FF))),
         error: (err, _) => Center(
           child: Text('Error loading inbox: $err', style: const TextStyle(color: Colors.redAccent)),
         ),

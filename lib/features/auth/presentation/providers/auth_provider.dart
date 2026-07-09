@@ -118,6 +118,26 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  Future<void> activatePremium() async {
+    final profile = state.profile;
+    if (profile == null) return;
+
+    state = state.copyWith(user: state.user, profile: profile, isLoading: true);
+    try {
+      final updatedProfileData = await _client
+          .from('profiles')
+          .update({'is_premium': true})
+          .eq('id', profile.id)
+          .select()
+          .single();
+
+      final updatedProfile = UserProfile.fromJson(Map<String, dynamic>.from(updatedProfileData));
+      state = state.copyWith(user: state.user, profile: updatedProfile, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(user: state.user, profile: profile, isLoading: false, errorMessage: 'Failed to unlock premium subscription status.');
+    }
+  }
+
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
     try {

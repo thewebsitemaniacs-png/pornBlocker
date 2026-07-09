@@ -85,7 +85,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Added custom protection: $package'),
-        backgroundColor: const Color(0xFFFF8906),
+        backgroundColor: const Color(0xFF5AB2FF),
       ),
     );
   }
@@ -109,7 +109,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
+      backgroundColor: const Color(0xFFFFFFFF),
       appBar: AppBar(
         title: const Text(
           'APP GUARD CONFIGURATION',
@@ -117,14 +117,14 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
             fontSize: 16,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.5,
-            color: Colors.white,
+            color: const Color(0xFF1E293B),
           ),
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1F1E29),
+        backgroundColor: const Color(0xFFF4F7FB),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: const Color(0xFF1E293B)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -135,24 +135,24 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1F1E29),
+              color: const Color(0xFFF4F7FB),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF2E2F3E)),
+              border: Border.all(color: const Color(0xFFE2EAF4)),
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Guarding Modes',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: const Color(0xFF1E293B), fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Configure how Curb Habit monitors individual apps on your device to prevent triggers while maintaining usability:\n\n'
+                  'Configure how flee monitors individual apps on your device to prevent triggers while maintaining usability:\n\n'
                   '• Full Scan: Inspects everything (static texts, layout nodes, lists).\n'
                   '• Input Only: Scans only text boxes and search/chat inputs (prevents false blocks on social feeds).\n'
                   '• Disabled: Excludes this app completely from keyword matching.',
-                  style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 13, height: 1.4),
+                  style: TextStyle(color: Color(0xFF475569), fontSize: 13, height: 1.4),
                 ),
               ],
             ),
@@ -161,7 +161,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
 
           const Text(
             'COMMON APPS',
-            style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+            style: TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
           ),
           const SizedBox(height: 12),
 
@@ -183,7 +183,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
             const SizedBox(height: 24),
             const Text(
               'CUSTOM TARGET APPS',
-              style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+              style: TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
             ),
             const SizedBox(height: 12),
             ...customPackages.map((package) {
@@ -201,13 +201,13 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
           const SizedBox(height: 32),
           ElevatedButton.icon(
             onPressed: () => _showAddCustomDialog(modesState, modesNotifier),
-            icon: const Icon(Icons.add, color: Colors.white),
+            icon: const Icon(Icons.add, color: const Color(0xFF1E293B)),
             label: const Text(
               'Add Custom App Package',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8906),
+              backgroundColor: const Color(0xFF5AB2FF),
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -232,10 +232,10 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1F1E29),
+        color: const Color(0xFFF4F7FB),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: currentMode == 'excluded' ? const Color(0xFF2E2F3E) : const Color(0xFFFF8906).withOpacity(0.3),
+          color: currentMode == 'excluded' ? const Color(0xFFE2EAF4) : const Color(0xFF5AB2FF).withOpacity(0.3),
         ),
       ),
       child: Column(
@@ -250,12 +250,12 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: const TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       package,
-                      style: const TextStyle(color: Color(0xFFA7A9BE), fontSize: 11),
+                      style: const TextStyle(color: Color(0xFF475569), fontSize: 11),
                     ),
                   ],
                 ),
@@ -303,17 +303,17 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFFFF8906) : const Color(0xFF0F0E17),
+            color: isSelected ? const Color(0xFF5AB2FF) : const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isSelected ? const Color(0xFFFF8906) : const Color(0xFF2E2F3E),
+              color: isSelected ? const Color(0xFF5AB2FF) : const Color(0xFFE2EAF4),
             ),
           ),
           child: Center(
             child: Text(
               text,
               style: TextStyle(
-                color: isSelected ? Colors.white : const Color(0xFFA7A9BE),
+                color: isSelected ? const Color(0xFF1E293B) : const Color(0xFF475569),
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -329,14 +329,14 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1F1E29),
+          backgroundColor: const Color(0xFFF4F7FB),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: const BorderSide(color: Color(0xFF2E2F3E)),
+            side: const BorderSide(color: Color(0xFFE2EAF4)),
           ),
           title: const Text(
             'Add Custom App',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -344,24 +344,24 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
             children: [
               const Text(
                 'Enter the Android package identifier of the application you wish to manage:',
-                style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 13, height: 1.4),
+                style: TextStyle(color: Color(0xFF475569), fontSize: 13, height: 1.4),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _customPackageController,
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: const Color(0xFF1E293B)),
                 decoration: InputDecoration(
                   hintText: 'e.g. com.reddit.frontpage',
                   hintStyle: const TextStyle(color: Color(0xFF5F6072)),
                   filled: true,
-                  fillColor: const Color(0xFF0F0E17),
+                  fillColor: const Color(0xFFFFFFFF),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF2E2F3E)),
+                    borderSide: const BorderSide(color: Color(0xFFE2EAF4)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFFF8906)),
+                    borderSide: const BorderSide(color: Color(0xFF5AB2FF)),
                   ),
                 ),
               ),
@@ -370,11 +370,11 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFFA7A9BE))),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF475569))),
             ),
             TextButton(
               onPressed: () => _addCustomPackage(state, notifier),
-              child: const Text('Add App', style: TextStyle(color: Color(0xFFFF8906), fontWeight: FontWeight.bold)),
+              child: const Text('Add App', style: TextStyle(color: Color(0xFF5AB2FF), fontWeight: FontWeight.bold)),
             ),
           ],
         );

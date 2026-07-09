@@ -54,7 +54,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
+      backgroundColor: const Color(0xFFFFFFFF),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -64,23 +64,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: const Color(0xFF1E293B),
               ),
             ),
             const Text(
               'Confession & Support Channel',
               style: TextStyle(
                 fontSize: 10,
-                color: Color(0xFFA7A9BE),
+                color: Color(0xFF475569),
               ),
             ),
           ],
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1F1E29),
+        backgroundColor: const Color(0xFFF4F7FB),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: const Color(0xFF1E293B)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -111,12 +111,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.chat_bubble_outline, color: const Color(0xFFFF8906).withOpacity(0.3), size: 48),
+                          Icon(Icons.chat_bubble_outline, color: const Color(0xFF5AB2FF).withOpacity(0.3), size: 48),
                           const SizedBox(height: 16),
                           const Text(
                             'Start confessing or talking to seek recovery support. Your buddy cannot see this supporter chat room.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 13),
+                            style: TextStyle(color: Color(0xFF475569), fontSize: 13),
                           ),
                         ],
                       ),
@@ -145,8 +145,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
-        color: Color(0xFF1F1E29),
-        border: Border(top: BorderSide(color: Color(0xFF2E2F3E))),
+        color: Color(0xFFF4F7FB),
+        border: Border(top: BorderSide(color: Color(0xFFE2EAF4))),
       ),
       child: SafeArea(
         child: Row(
@@ -155,16 +155,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F0E17),
+                  color: const Color(0xFFFFFFFF),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFF2E2F3E)),
+                  border: Border.all(color: const Color(0xFFE2EAF4)),
                 ),
                 child: TextField(
                   controller: _messageController,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: const Color(0xFF1E293B)),
                   decoration: const InputDecoration(
                     hintText: 'Type your message...',
-                    hintStyle: TextStyle(color: Colors.white30, fontSize: 14),
+                    hintStyle: TextStyle(color: const Color(0xFFCBD5E1), fontSize: 14),
                     border: InputBorder.none,
                   ),
                   onSubmitted: (_) => _sendMessage(),
@@ -173,7 +173,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             ),
             const SizedBox(width: 8),
             IconButton(
-              icon: const Icon(Icons.send_rounded, color: Color(0xFFFF8906)),
+              icon: const Icon(Icons.send_rounded, color: Color(0xFF5AB2FF)),
               onPressed: _sendMessage,
             ),
           ],
@@ -191,8 +191,8 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = isMe ? const Color(0xFFFF8906) : const Color(0xFF2E2F3E);
-    final textColor = isMe ? const Color(0xFF0F0E17) : Colors.white;
+    final bubbleColor = isMe ? const Color(0xFF5AB2FF) : const Color(0xFFE2EAF4);
+    final textColor = isMe ? const Color(0xFFFFFFFF) : const Color(0xFF1E293B);
     final alignment = isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final borderRadius = isMe
         ? const BorderRadius.only(
@@ -226,7 +226,7 @@ class _ChatBubble extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${message.createdAt.hour}:${message.createdAt.minute.toString().padLeft(2, '0')}',
-            style: const TextStyle(color: Color(0xFFA7A9BE), fontSize: 10),
+            style: const TextStyle(color: Color(0xFF475569), fontSize: 10),
           ),
         ],
       ),

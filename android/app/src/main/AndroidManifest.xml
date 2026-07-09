@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
 
     <application
-        android:label="Curb Habit"
+        android:label="flee"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -52,7 +52,7 @@
         <!-- Device Admin Receiver for uninstall prevention -->
         <receiver
             android:name=".BlockerDeviceAdminReceiver"
-            android:label="Curb Habit Uninstall Guard"
+            android:label="flee Uninstall Guard"
             android:description="@string/accessibility_service_description"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
             android:exported="true">

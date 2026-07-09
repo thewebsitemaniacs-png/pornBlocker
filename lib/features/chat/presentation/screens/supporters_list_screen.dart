@@ -12,7 +12,7 @@ class SupportersListScreen extends ConsumerWidget {
     final supportersAsync = ref.watch(supportersListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
+      backgroundColor: const Color(0xFFFFFFFF),
       appBar: AppBar(
         title: const Text(
           'RECOVERY SUPPORTERS',
@@ -20,14 +20,14 @@ class SupportersListScreen extends ConsumerWidget {
             fontSize: 16,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.5,
-            color: Colors.white,
+            color: const Color(0xFF1E293B),
           ),
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1F1E29),
+        backgroundColor: const Color(0xFFF4F7FB),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: const Color(0xFF1E293B)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -40,7 +40,7 @@ class SupportersListScreen extends ConsumerWidget {
                 child: Text(
                   'No supporters are currently available. Check back soon.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 14),
+                  style: TextStyle(color: Color(0xFF475569), fontSize: 14),
                 ),
               ),
             );
@@ -55,22 +55,22 @@ class SupportersListScreen extends ConsumerWidget {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F1E29),
+                  color: const Color(0xFFF4F7FB),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF2E2F3E)),
+                  border: Border.all(color: const Color(0xFFE2EAF4)),
                 ),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFFF8906).withOpacity(0.1),
-                    child: const Icon(Icons.support_agent, color: Color(0xFFFF8906)),
+                    backgroundColor: const Color(0xFF5AB2FF).withOpacity(0.1),
+                    child: const Icon(Icons.support_agent, color: Color(0xFF5AB2FF)),
                   ),
                   title: Text(
                     supporter.username,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold),
                   ),
                   subtitle: const Text(
                     'Verified Recovery Companion',
-                    style: TextStyle(color: Color(0xFFA7A9BE), fontSize: 12),
+                    style: TextStyle(color: Color(0xFF475569), fontSize: 12),
                   ),
                   trailing: ElevatedButton(
                     onPressed: () {
@@ -82,8 +82,8 @@ class SupportersListScreen extends ConsumerWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF8906),
-                      foregroundColor: const Color(0xFF0F0E17),
+                      backgroundColor: const Color(0xFF5AB2FF),
+                      foregroundColor: const Color(0xFFFFFFFF),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -95,7 +95,7 @@ class SupportersListScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF8906))),
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF5AB2FF))),
         error: (err, _) => Center(
           child: Text('Error loading supporters: $err', style: const TextStyle(color: Colors.redAccent)),
         ),
