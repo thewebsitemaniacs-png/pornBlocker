@@ -16,6 +16,7 @@ import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
 import android.widget.Toast
+import android.util.Log
 import java.util.HashMap
 import java.util.Locale
 
@@ -27,9 +28,16 @@ class BlockerAccessibilityService : AccessibilityService() {
         private var onBlockedCallback: ((String) -> Unit)? = null
         private var dynamicExcludedPackages: Set<String> = emptySet()
         private var dynamicTextBoxOnlyPackages: Set<String> = emptySet()
+        
+        // Static flag to dynamically enable/disable accessibility scanning from app config
+        var isScreenBlockingEnabled: Boolean = true
+
+        // Set to true to temporarily disable active blocking and only show test Toast alerts
+        var isTestingMode: Boolean = false
 
         fun setBlocklist(keywords: List<String>) {
             blockedKeywords = keywords.map { it.lowercase() }
+            Log.d("BlockerAccessibility", "Active blocklist keywords updated: $blockedKeywords")
         }
 
         fun setAppBlockingModes(excluded: List<String>, textBoxOnly: List<String>) {
@@ -72,10 +80,13 @@ class BlockerAccessibilityService : AccessibilityService() {
         "com.kiwibrowser.browser"
     )
 
-    private fun isBrowserApp(packageName: String): Boolean {
-        if (BROWSER_PACKAGES.contains(packageName)) return true
+    private fun isBrowserApp(packageName: String): String? {
+        if (BROWSER_PACKAGES.contains(packageName)) return packageName
         val lower = packageName.lowercase()
-        return lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") || lower.contains("webview")
+        if (lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") || lower.contains("webview")) {
+            return packageName
+        }
+        return null
     }
 
     private val WARNING_PACKAGES = setOf(
@@ -133,6 +144,7 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!isScreenBlockingEnabled) return
         if (event == null) return
 
         val appPackage = event.packageName?.toString() ?: return
@@ -142,17 +154,9 @@ class BlockerAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Check if currently active foreground window belongs to an excluded app
-        val activeWindow = rootInActiveWindow
-        if (activeWindow != null) {
-            val activePackage = activeWindow.packageName?.toString()
-            if (activePackage != null && isExcludedApp(activePackage)) {
-                return
-            }
-        }
-
         // 1. Scan direct event text content (catches keyboard typing inputs instantly)
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED && !isBrowserApp(appPackage)) {
+        val isBrowser = isBrowserApp(appPackage) != null
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED && !isBrowser) {
             try {
                 val eventTextList = event.text
                 if (eventTextList != null) {
@@ -169,10 +173,16 @@ class BlockerAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 2. Scan window contents (catches rendered/scrolled views)
-        val source = rootInActiveWindow
-        if (source != null) {
-            checkNodeAndChildren(source, appPackage)
+        // 2. Scan direct event node tree context
+        val eventSource = event.source
+        if (eventSource != null) {
+            checkNodeAndChildren(eventSource, appPackage)
+        }
+
+        // 3. Scan full window contents (catches rendered/scrolled views in background thread loops)
+        val activeWindow = rootInActiveWindow
+        if (activeWindow != null) {
+            checkNodeAndChildren(activeWindow, appPackage)
         }
     }
 
@@ -197,7 +207,7 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
-        val isBrowser = isBrowserApp(appPackage)
+        val isBrowser = isBrowserApp(appPackage) != null
         val isTextBoxOnly = dynamicTextBoxOnlyPackages.contains(appPackage)
         
         val shouldScan = if (isExcludedApp(appPackage)) {
@@ -242,6 +252,14 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun handleBlockOrWarning(matchedText: String, appPackage: String) {
+        if (isTestingMode) {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(this, "[TEST MODE] Trigger matched: $matchedText in $appPackage", Toast.LENGTH_LONG).show()
+            }
+            Log.d("BlockerAccessibility", "[TEST MODE] Trigger matched: $matchedText in $appPackage")
+            return
+        }
+
         if (WARNING_PACKAGES.contains(appPackage)) {
             val now = System.currentTimeMillis()
             val lastTime = lastWarningTimestamps[appPackage] ?: 0L

@@ -29,6 +29,20 @@ class DashboardTabIndex extends Notifier<int> {
 
 final dashboardTabIndexProvider = NotifierProvider<DashboardTabIndex, int>(DashboardTabIndex.new);
 
+class HasConfessedToStranger extends Notifier<bool> {
+  @override
+  bool build() {
+    final storage = ref.watch(storageServiceProvider);
+    return storage.settingsBox.get('has_confessed_to_stranger', defaultValue: false) as bool;
+  }
+
+  void setConfessed() {
+    state = true;
+  }
+}
+
+final hasConfessedToStrangerProvider = NotifierProvider<HasConfessedToStranger, bool>(HasConfessedToStranger.new);
+
 void _showPaywallBottomSheet(BuildContext context) {
   showModalBottomSheet(
     context: context,
@@ -968,6 +982,7 @@ class _HabitTab extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'Anonymous Explorer';
     final hasPartner = authState.profile?.buddyId != null && authState.profile!.buddyId!.isNotEmpty;
+    final hasConfessed = ref.watch(hasConfessedToStrangerProvider);
 
     final permissionsAsync = ref.watch(permissionStatesFutureProvider);
     final isBlockingActive = permissionsAsync.when(
@@ -976,8 +991,8 @@ class _HabitTab extends ConsumerWidget {
       loading: () => false,
     );
 
-    final completedCount = (isBlockingActive ? 1 : 0) + (hasPartner ? 1 : 0);
-    final totalCount = 2;
+    final completedCount = (isBlockingActive ? 1 : 0) + (hasPartner ? 1 : 0) + (hasConfessed ? 1 : 0);
+    final totalCount = 3;
 
     final logsAsync = ref.watch(habitLogsProvider);
     final analyticsAsync = ref.watch(analyticsProvider);
@@ -1056,7 +1071,24 @@ class _HabitTab extends ConsumerWidget {
                 },
               ),
             ],
-            if (isBlockingActive && hasPartner)
+            if (!hasConfessed) ...[
+              if (!isBlockingActive || !hasPartner) const SizedBox(height: 8),
+              _buildChecklistCard(
+                context,
+                title: 'Confess to a Stranger',
+                subtitle: 'Share your struggles anonymously to get help',
+                icon: Icons.chat_bubble_outline,
+                iconColor: const Color(0xFFEC4899),
+                bgColor: const Color(0xFFFCE7F3),
+                onTap: () async {
+                  final storage = ref.read(storageServiceProvider);
+                  await storage.settingsBox.put('has_confessed_to_stranger', true);
+                  ref.read(hasConfessedToStrangerProvider.notifier).setConfessed();
+                  await ref.read(platformChannelServiceProvider).openUrl('https://www.joshuasamuel.in/flee-chat');
+                },
+              ),
+            ],
+            if (isBlockingActive && hasPartner && hasConfessed)
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -1266,7 +1298,10 @@ class _BlockingTab extends ConsumerStatefulWidget {
 }
 
 class _BlockingTabState extends ConsumerState<_BlockingTab> {
-  bool _isBlockingActive = false;
+  bool _isScreenBlockerEnabled = false;
+  bool _isVpnEnabled = false;
+  bool _isUninstallGuardEnabled = false;
+  String? _bypassTargetFeature;
   
   Map<String, bool> _permissionStates = {
     'accessibility': false,
@@ -1279,6 +1314,12 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final storage = ref.read(storageServiceProvider);
+      setState(() {
+        _isScreenBlockerEnabled = storage.settingsBox.get('screen_blocker_enabled', defaultValue: false) as bool;
+        _isVpnEnabled = storage.settingsBox.get('network_blocker_enabled', defaultValue: false) as bool;
+        _isUninstallGuardEnabled = storage.settingsBox.get('uninstall_guard_enabled', defaultValue: false) as bool;
+      });
       _checkCurrentPermissions();
     });
   }
@@ -1296,17 +1337,33 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
       final storage = ref.read(storageServiceProvider);
       await storage.settingsBox.put('last_accessibility_state', currentAccessibility);
 
-      // Auto-start VPN service if ALL three permissions are granted, but VPN is not running.
-      final allGranted = currentAccessibility && isVpnAuthorized && isAdminActive;
-      if (allGranted && !isVpnRunning) {
-        await channel.startBlocking();
-        final blocklist = ref.read(blocklistProvider);
-        await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
+      // 1. Accessibility Scan Sync
+      if (currentAccessibility && _isScreenBlockerEnabled) {
+        await channel.setScreenBlockingEnabled(true);
+      } else {
+        await channel.setScreenBlockingEnabled(false);
+      }
+
+      // 2. VPN Service Sync
+      if (isVpnAuthorized && _isVpnEnabled) {
+        if (!isVpnRunning) {
+          await channel.startBlocking();
+          final blocklist = ref.read(blocklistProvider);
+          await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
+        }
+      } else {
+        if (isVpnRunning) {
+          await channel.stopBlocking();
+        }
+      }
+
+      // 3. Uninstall Guard Sync
+      if (isAdminActive && !_isUninstallGuardEnabled) {
+        await channel.deactivateAdmin();
       }
 
       setState(() {
         _permissionStates = permissionsMap;
-        _isBlockingActive = allGranted && (isVpnRunning || !_isBlockingActive);
       });
     } catch (_) {}
   }
@@ -1321,135 +1378,93 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
         if (_permissionStates[checkKey] == true) {
           timer.cancel();
           
-          final currentAccessibility = _permissionStates['accessibility'] ?? false;
-          final isVpnAuthorized = _permissionStates['vpn_authorized'] ?? false;
-          final isAdminActive = _permissionStates['admin'] ?? false;
-          
-          if (currentAccessibility && isVpnAuthorized && isAdminActive) {
+          final storage = ref.read(storageServiceProvider);
+          // Automatically enable the toggle upon successful grant
+          if (type == 'accessibility') {
+            await storage.settingsBox.put('screen_blocker_enabled', true);
+            setState(() => _isScreenBlockerEnabled = true);
+            await channel.setScreenBlockingEnabled(true);
+            ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Screen Blocker'});
+          } else if (type == 'vpn') {
+            await storage.settingsBox.put('network_blocker_enabled', true);
+            setState(() => _isVpnEnabled = true);
             await channel.startBlocking();
             final blocklist = ref.read(blocklistProvider);
             await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
-            ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'status': true});
+            ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Network Blocker'});
+          } else if (type == 'admin') {
+            await storage.settingsBox.put('uninstall_guard_enabled', true);
+            setState(() => _isUninstallGuardEnabled = true);
+            ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Uninstall Guard'});
           }
+          await _checkCurrentPermissions();
         }
       });
     } catch (_) {}
   }
 
-  Future<void> _toggleBlocking(bool targetValue) async {
-    final channel = ref.read(platformChannelServiceProvider);
-    
-    if (targetValue) {
-      await _checkCurrentPermissions();
-      
-      final missingPermissions = <String>[];
-      if (!_permissionStates['accessibility']!) missingPermissions.add('accessibility');
-      if (!_permissionStates['vpn_authorized']!) missingPermissions.add('vpn');
-      if (!_permissionStates['admin']!) missingPermissions.add('admin');
-      
-      if (missingPermissions.isNotEmpty) {
-        _showPermissionBottomSheet(missingPermissions);
+  Future<void> _toggleScreenBlocker(bool value) async {
+    final storage = ref.read(storageServiceProvider);
+    if (value) {
+      if (_permissionStates['accessibility'] != true) {
+        _requestSinglePermission('accessibility');
         return;
       }
-
-      await channel.startBlocking();
-      
-      final blocklist = ref.read(blocklistProvider);
-      await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
-      
-      ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'status': true});
-      setState(() {
-        _isBlockingActive = true;
-      });
+      await storage.settingsBox.put('screen_blocker_enabled', true);
+      setState(() => _isScreenBlockerEnabled = true);
+      await ref.read(platformChannelServiceProvider).setScreenBlockingEnabled(true);
+      ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Screen Blocker'});
     } else {
+      setState(() {
+        _bypassTargetFeature = 'accessibility';
+      });
       ref.read(bypassGuardProvider.notifier).startBypassRequest(60);
     }
   }
 
-  void _showPermissionBottomSheet(List<String> missing) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFFF4F7FB),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                     'SYSTEM PERMISSIONS REQUIRED',
-                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'flee needs system level services to scan content and filter network DNS queries.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('1. Accessibility Service', style: TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Scans screen layouts for keyword blocks', style: TextStyle(color: Color(0xFF475569), fontSize: 12)),
-                    trailing: _permissionStates['accessibility']!
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : ElevatedButton(
-                            onPressed: () {
-                              _requestSinglePermission('accessibility');
-                              Navigator.pop(context);
-                            },
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5AB2FF)),
-                            child: const Text('GRANT', style: TextStyle(fontSize: 12, color: Colors.black)),
-                          ),
-                  ),
-                  const Divider(color: Color(0xFFE2EAF4)),
-
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('2. Local VPN Connection', style: TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Enforces DNS sinkholes on domain blocks', style: TextStyle(color: Color(0xFF475569), fontSize: 12)),
-                    trailing: _permissionStates['vpn_authorized']!
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : ElevatedButton(
-                            onPressed: () {
-                              _requestSinglePermission('vpn');
-                              Navigator.pop(context);
-                            },
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5AB2FF)),
-                            child: const Text('GRANT', style: TextStyle(fontSize: 12, color: Colors.black)),
-                          ),
-                  ),
-                  const Divider(color: Color(0xFFE2EAF4)),
-
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('3. Device Administrator', style: TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Uninstall prevention guard', style: TextStyle(color: Color(0xFF475569), fontSize: 12)),
-                    trailing: _permissionStates['admin']!
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : ElevatedButton(
-                            onPressed: () {
-                              _requestSinglePermission('admin');
-                              Navigator.pop(context);
-                            },
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5AB2FF)),
-                            child: const Text('GRANT', style: TextStyle(fontSize: 12, color: Colors.black)),
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+  Future<void> _toggleUninstallGuard(bool value) async {
+    final storage = ref.read(storageServiceProvider);
+    if (value) {
+      if (_permissionStates['admin'] != true) {
+        _requestSinglePermission('admin');
+        return;
+      }
+      await storage.settingsBox.put('uninstall_guard_enabled', true);
+      setState(() => _isUninstallGuardEnabled = true);
+      ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Uninstall Guard'});
+    } else {
+      await storage.settingsBox.put('uninstall_guard_enabled', false);
+      setState(() => _isUninstallGuardEnabled = false);
+      await ref.read(platformChannelServiceProvider).deactivateAdmin();
+      ref.read(habitLogsProvider.notifier).addLog('blocker_stopped', {'feature': 'Uninstall Guard'});
+    }
+    await _checkCurrentPermissions();
   }
+
+  Future<void> _toggleVpnBlocker(bool value) async {
+    final storage = ref.read(storageServiceProvider);
+    if (value) {
+      if (_permissionStates['vpn_authorized'] != true) {
+        _requestSinglePermission('vpn');
+        return;
+      }
+      await storage.settingsBox.put('network_blocker_enabled', true);
+      setState(() => _isVpnEnabled = true);
+      final channel = ref.read(platformChannelServiceProvider);
+      await channel.startBlocking();
+      final blocklist = ref.read(blocklistProvider);
+      await channel.updateBlocklist(blocklist.domains, blocklist.keywords);
+      ref.read(habitLogsProvider.notifier).addLog('blocker_started', {'feature': 'Network Blocker'});
+    } else {
+      setState(() {
+        _bypassTargetFeature = 'vpn';
+      });
+      ref.read(bypassGuardProvider.notifier).startBypassRequest(60);
+    }
+    await _checkCurrentPermissions();
+  }
+
+
 
   Widget _buildPermissionCard({
     required String numberAndTitle,
@@ -1459,6 +1474,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     required Color iconBgColor,
     required bool isGranted,
     required VoidCallback onGrant,
+    required bool isFeatureEnabled,
+    required ValueChanged<bool> onFeatureToggled,
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1515,28 +1532,35 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
             width: double.infinity,
             height: 48,
             child: isGranted
-                ? Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD1FAE5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'GRANTED',
-                          style: TextStyle(
-                            color: Color(0xFF047857),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            letterSpacing: 1.0,
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isFeatureEnabled ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isFeatureEnabled ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                            size: 18,
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isFeatureEnabled ? 'RUNNING & PROTECTING' : 'DISABLED',
+                            style: TextStyle(
+                              color: isFeatureEnabled ? const Color(0xFF047857) : const Color(0xFF64748B),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12.5,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Switch(
+                        value: isFeatureEnabled,
+                        activeColor: const Color(0xFFFFD200),
+                        activeTrackColor: const Color(0xFFFFD200).withOpacity(0.3),
+                        onChanged: onFeatureToggled,
+                      ),
+                    ],
                   )
                 : ElevatedButton(
                     onPressed: onGrant,
@@ -1549,7 +1573,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                       elevation: 0,
                     ),
                     child: const Text(
-                      'GRANT',
+                      'GRANT PERMISSION',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -1566,6 +1590,10 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   @override
   Widget build(BuildContext context) {
     final bypassState = ref.watch(bypassGuardProvider);
+
+    final isScreenActive = _permissionStates['accessibility'] == true && _isScreenBlockerEnabled;
+    final isVpnActive = _permissionStates['vpn_running'] == true;
+    final isProtectionActive = isScreenActive || isVpnActive;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F9FD),
@@ -1628,6 +1656,9 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                         TextButton(
                           onPressed: () {
                             ref.read(bypassGuardProvider.notifier).cancelBypassRequest();
+                            setState(() {
+                              _bypassTargetFeature = null;
+                            });
                           },
                           style: TextButton.styleFrom(foregroundColor: const Color(0xFF475569)),
                           child: const Text('Cancel Request'),
@@ -1635,13 +1666,29 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                         if (bypassState.canConfirmBypass)
                           ElevatedButton(
                             onPressed: () async {
+                              final storage = ref.read(storageServiceProvider);
                               final channel = ref.read(platformChannelServiceProvider);
-                              await channel.stopBlocking();
+                              
+                              if (_bypassTargetFeature == 'accessibility') {
+                                await storage.settingsBox.put('screen_blocker_enabled', false);
+                                await channel.setScreenBlockingEnabled(false);
+                                ref.read(habitLogsProvider.notifier).addLog('blocker_stopped', {'feature': 'Screen Blocker'});
+                                setState(() {
+                                  _isScreenBlockerEnabled = false;
+                                  _bypassTargetFeature = null;
+                                });
+                              } else {
+                                await storage.settingsBox.put('network_blocker_enabled', false);
+                                await channel.stopBlocking();
+                                ref.read(habitLogsProvider.notifier).addLog('blocker_stopped', {'feature': 'Network Blocker'});
+                                setState(() {
+                                  _isVpnEnabled = false;
+                                  _bypassTargetFeature = null;
+                                });
+                              }
+                              
                               ref.read(bypassGuardProvider.notifier).completeBypass();
-                              ref.read(habitLogsProvider.notifier).addLog('blocker_stopped', {'status': false});
-                              setState(() {
-                                _isBlockingActive = false;
-                              });
+                              await _checkCurrentPermissions();
                             },
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
                             child: const Text('Confirm Turn Off', style: TextStyle(color: Color(0xFF1E293B))),
@@ -1658,78 +1705,51 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _isBlockingActive ? const Color(0xFF5AB2FF).withOpacity(0.5) : const Color(0xFFE2EAF4),
+                    color: isProtectionActive ? const Color(0xFF10B981).withOpacity(0.5) : const Color(0xFFE2EAF4),
                     width: 1.5,
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text(
+                      'Blocker Protection Status',
+                      style: TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Content Block Engine',
-                              style: TextStyle(
-                                color: Color(0xFF1E293B),
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _isBlockingActive ? 'ACTIVE & FILTERING' : 'INACTIVE',
-                              style: TextStyle(
-                                color: _isBlockingActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12.5,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
+                        Icon(
+                          isProtectionActive ? Icons.check_circle : Icons.radio_button_off,
+                          color: isProtectionActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                          size: 16,
                         ),
-                        Switch(
-                          value: _isBlockingActive,
-                          activeColor: const Color(0xFFFFD200),
-                          onChanged: (val) => _toggleBlocking(val),
+                        const SizedBox(width: 8),
+                        Text(
+                          isProtectionActive ? 'PROTECTION ACTIVE' : 'NO ACTIVE PROTECTION',
+                          style: TextStyle(
+                            color: isProtectionActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF0F9FF),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.info_outline, color: Color(0xFF0284C7), size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: RichText(
-                              text: const TextSpan(
-                                style: TextStyle(color: Color(0xFF0369A1), fontSize: 13, height: 1.4),
-                                children: [
-                                  TextSpan(
-                                    text: 'Android: ',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  TextSpan(text: 'Accessibility text scanner & Local DNS VPN.\n'),
-                                  TextSpan(
-                                    text: 'iOS: ',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  TextSpan(text: 'System Web Filters & Screen Time restrictions.'),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: const Text(
+                        'Enable individual features below. You no longer need all permissions to activate blocker modules.',
+                        style: TextStyle(color: Color(0xFF0369A1), fontSize: 12, height: 1.4),
                       ),
                     ),
                   ],
@@ -1772,6 +1792,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
               iconBgColor: const Color(0xFFFEF3C7),
               isGranted: _permissionStates['accessibility'] ?? false,
               onGrant: () => _requestSinglePermission('accessibility'),
+              isFeatureEnabled: _isScreenBlockerEnabled,
+              onFeatureToggled: (val) => _toggleScreenBlocker(val),
             ),
             const SizedBox(height: 16),
             _buildPermissionCard(
@@ -1782,6 +1804,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
               iconBgColor: const Color(0xFFD1FAE5),
               isGranted: _permissionStates['vpn_authorized'] ?? false,
               onGrant: () => _requestSinglePermission('vpn'),
+              isFeatureEnabled: _isVpnEnabled,
+              onFeatureToggled: (val) => _toggleVpnBlocker(val),
             ),
             const SizedBox(height: 16),
             _buildPermissionCard(
@@ -1792,6 +1816,8 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
               iconBgColor: const Color(0xFFDBEAFE),
               isGranted: _permissionStates['admin'] ?? false,
               onGrant: () => _requestSinglePermission('admin'),
+              isFeatureEnabled: _isUninstallGuardEnabled,
+              onFeatureToggled: (val) => _toggleUninstallGuard(val),
             ),
             const SizedBox(height: 28),
 
@@ -1810,30 +1836,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
                 elevation: 0,
               ),
             ),
-            const SizedBox(height: 28),
 
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F2FE),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.lock_outline, color: Color(0xFF0284C7), size: 16),
-                  SizedBox(width: 8),
-                  Text(
-                    'Privacy First: All data is processed locally on-device.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0369A1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 40),
           ],
         ),
@@ -1901,7 +1904,7 @@ class _ProfileTab extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'SleekPanda8276';
     final isPremium = authState.profile?.isPremium ?? false;
-    final isSupporter = authState.profile?.isSupporter ?? false;
+
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F9FD),
@@ -2070,21 +2073,19 @@ class _ProfileTab extends ConsumerWidget {
                 },
               ),
 
+
+
             _buildSettingsCard(
               context: context,
-              title: isSupporter ? 'My Supporter Inbox' : 'Talk to a Supporter',
-              icon: isSupporter ? Icons.inbox : Icons.support_agent,
-              iconBg: const Color(0xFFF0F9FF),
-              iconColor: const Color(0xFF0284C7),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => isSupporter
-                        ? const SupporterInboxScreen()
-                        : const SupportersListScreen(),
-                  ),
-                );
+              title: 'Confess to a Stranger',
+              icon: Icons.chat_bubble_outline,
+              iconBg: const Color(0xFFFCE7F3),
+              iconColor: const Color(0xFFEC4899),
+              onTap: () async {
+                final storage = ref.read(storageServiceProvider);
+                await storage.settingsBox.put('has_confessed_to_stranger', true);
+                ref.read(hasConfessedToStrangerProvider.notifier).setConfessed();
+                await ref.read(platformChannelServiceProvider).openUrl('https://www.joshuasamuel.in/flee-chat');
               },
             ),
 

@@ -4,6 +4,9 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.content.Intent
 import android.util.Log
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.LinkProperties
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -36,12 +39,29 @@ class BlockerVpnService : VpnService(), Runnable {
 
         fun stopVpn() {
             vpnThread?.interrupt()
+            
+            try {
+                instance?.vpnInput?.close()
+            } catch (e: Exception) {}
+            try {
+                instance?.vpnOutput?.close()
+            } catch (e: Exception) {}
+            try {
+                instance?.vpnInterface?.close()
+            } catch (e: Exception) {}
+            
+            instance?.vpnInput = null
+            instance?.vpnOutput = null
+            instance?.vpnInterface = null
+
             instance?.stopSelf()
             instance = null
         }
     }
 
-    private var vpnInterface: ParcelFileDescriptor? = null
+    var vpnInterface: ParcelFileDescriptor? = null
+    var vpnInput: java.io.FileInputStream? = null
+    var vpnOutput: java.io.FileOutputStream? = null
     private var dnsExecutor: ExecutorService? = null
 
     override fun onCreate() {
@@ -59,10 +79,23 @@ class BlockerVpnService : VpnService(), Runnable {
     }
 
     override fun onDestroy() {
-        stopVpn()
         dnsExecutor?.shutdownNow()
-        vpnInterface?.close()
+        
+        try {
+            vpnInput?.close()
+        } catch (e: Exception) {}
+        try {
+            vpnOutput?.close()
+        } catch (e: Exception) {}
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) {}
+        
+        vpnInput = null
+        vpnOutput = null
         vpnInterface = null
+        
+        instance = null
         super.onDestroy()
     }
 
@@ -79,18 +112,18 @@ class BlockerVpnService : VpnService(), Runnable {
                 .addRoute("2001:4860:4860::8888", 128)
 
             vpnInterface = builder.establish()
-            val input = FileInputStream(vpnInterface!!.fileDescriptor)
-            val output = FileOutputStream(vpnInterface!!.fileDescriptor)
+            vpnInput = java.io.FileInputStream(vpnInterface!!.fileDescriptor)
+            vpnOutput = java.io.FileOutputStream(vpnInterface!!.fileDescriptor)
 
             val packetBuffer = ByteArray(32767)
 
             while (!Thread.interrupted()) {
-                val length = input.read(packetBuffer)
+                val length = vpnInput!!.read(packetBuffer)
                 if (length > 0) {
                     if (isDnsPacket(packetBuffer, length)) {
                         val packetCopy = packetBuffer.copyOf(length)
                         dnsExecutor?.submit {
-                            processDnsPacket(packetCopy, output)
+                            processDnsPacket(packetCopy, vpnOutput!!)
                         }
                     }
                 }
@@ -119,6 +152,24 @@ class BlockerVpnService : VpnService(), Runnable {
         return false
     }
 
+    private fun getUpstreamDnsServers(): List<InetAddress> {
+        val servers = ArrayList<InetAddress>()
+        try {
+            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork
+            val linkProperties = connectivityManager.getLinkProperties(activeNetwork)
+            val dnsList = linkProperties?.dnsServers
+            if (dnsList != null) {
+                for (dns in dnsList) {
+                    servers.add(dns)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("BlockerVpnService", "Error getting DNS servers: ${e.message}")
+        }
+        return servers
+    }
+
     private fun processDnsPacket(data: ByteArray, output: FileOutputStream) {
         try {
             val version = (data[0].toInt() and 0xF0) shr 4
@@ -143,24 +194,71 @@ class BlockerVpnService : VpnService(), Runnable {
                 protect(socket) // Shield socket from local VPN loopback routing
                 socket.soTimeout = 2000
                 
-                val serverAddr = if (version == 4) {
-                    InetAddress.getByName("1.1.1.1") // Forward to Cloudflare (avoid 8.8.8.8 loopback)
-                } else {
-                    InetAddress.getByName("2606:4700:4700::1111")
+                // Get upstream DNS servers dynamically from active network connections
+                val upstreamDns = getUpstreamDnsServers()
+                var resolved = false
+                var dnsResponse: ByteArray? = null
+
+                for (dnsServer in upstreamDns) {
+                    if (version == 4 && dnsServer is java.net.Inet4Address) {
+                        try {
+                            val sendPacket = DatagramPacket(dnsQuery, dnsQuery.size, dnsServer, 53)
+                            socket.send(sendPacket)
+                            
+                            val recvBuf = ByteArray(1024)
+                            val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
+                            socket.receive(recvPacket)
+                            
+                            dnsResponse = recvBuf.copyOf(recvPacket.length)
+                            resolved = true
+                            break
+                        } catch (e: Exception) {
+                            // Try next server
+                        }
+                    } else if (version == 6 && dnsServer is java.net.Inet6Address) {
+                        try {
+                            val sendPacket = DatagramPacket(dnsQuery, dnsQuery.size, dnsServer, 53)
+                            socket.send(sendPacket)
+                            
+                            val recvBuf = ByteArray(1024)
+                            val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
+                            socket.receive(recvPacket)
+                            
+                            dnsResponse = recvBuf.copyOf(recvPacket.length)
+                            resolved = true
+                            break
+                        } catch (e: Exception) {
+                            // Try next server
+                        }
+                    }
+                }
+
+                // Fallback to secure public DNS if custom/local server resolves fail
+                if (!resolved) {
+                    val fallbackAddr = if (version == 4) {
+                        InetAddress.getByName("1.1.1.1")
+                    } else {
+                        InetAddress.getByName("2606:4700:4700::1111")
+                    }
+                    try {
+                        val sendPacket = DatagramPacket(dnsQuery, dnsQuery.size, fallbackAddr, 53)
+                        socket.send(sendPacket)
+                        
+                        val recvBuf = ByteArray(1024)
+                        val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
+                        socket.receive(recvPacket)
+                        
+                        dnsResponse = recvBuf.copyOf(recvPacket.length)
+                    } catch (e: Exception) {
+                        // Suppressed
+                    }
                 }
                 
-                val sendPacket = DatagramPacket(dnsQuery, dnsQuery.size, serverAddr, 53)
-                socket.send(sendPacket)
-                
-                val recvBuf = ByteArray(1024)
-                val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
-                socket.receive(recvPacket)
-                
-                val dnsResponse = recvBuf.copyOf(recvPacket.length)
-                val fullPacket = buildIpUdpPacket(data, dnsResponse, version, dnsOffset)
-                
-                synchronized(output) {
-                    output.write(fullPacket)
+                if (dnsResponse != null) {
+                    val fullPacket = buildIpUdpPacket(data, dnsResponse, version, dnsOffset)
+                    synchronized(output) {
+                        output.write(fullPacket)
+                    }
                 }
                 socket.close()
             }

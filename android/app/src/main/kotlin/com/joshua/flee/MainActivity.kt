@@ -13,6 +13,7 @@ import android.net.VpnService
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import java.util.HashMap
+import android.net.Uri
 
 class MainActivity : FlutterActivity() {
     private val METHOD_CHANNEL = "com.joshua.flee.app/blocking"
@@ -112,6 +113,38 @@ class MainActivity : FlutterActivity() {
                     
                     BlockerAccessibilityService.setAppBlockingModes(excluded, textBoxOnly)
                     result.success(true)
+                }
+                "setScreenBlockingEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    BlockerAccessibilityService.isScreenBlockingEnabled = enabled
+                    result.success(true)
+                }
+                "deactivateAdmin" -> {
+                    if (dpm.isAdminActive(adminComponent)) {
+                        dpm.removeActiveAdmin(adminComponent)
+                    }
+                    result.success(true)
+                }
+                "openUrl" -> {
+                    val url = call.argument<String>("url")
+                    if (url != null) {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            try {
+                                intent.setPackage("com.android.chrome")
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                intent.setPackage(null)
+                                startActivity(intent)
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("OPEN_URL_FAILED", e.message, null)
+                        }
+                    } else {
+                        result.error("BAD_ARGS", "URL is null", null)
+                    }
                 }
                 else -> {
                     result.notImplemented()

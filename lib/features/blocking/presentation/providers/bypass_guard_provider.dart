@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class BypassGuardState {
@@ -58,6 +59,11 @@ class BypassGuardNotifier extends Notifier<BypassGuardState> {
     }
     _lastHitTime = now;
 
+    const bool disableLockoutTesting = false; // Production mode: Lockout active
+    if (disableLockoutTesting) {
+      return;
+    }
+
     if (_blockTriggerHits >= 3) {
       // Repeated hits lock the user out for 15 minutes
       triggerLockout(const Duration(minutes: 15));
@@ -87,7 +93,19 @@ class BypassGuardNotifier extends Notifier<BypassGuardState> {
   void startBypassRequest(int durationSeconds) {
     if (state.isLockoutActive) return;
     
+    // Set to true when running on the device to temporarily bypass the 60s countdown for testing
+    const bool isTestingMode = false; // Production mode: 60s countdown active
+    
     _countdownTimer?.cancel();
+    if (isTestingMode) {
+      state = state.copyWith(
+        isBypassRequested: true,
+        bypassCountdownSeconds: 0,
+        canConfirmBypass: true,
+      );
+      return;
+    }
+    
     state = state.copyWith(
       isBypassRequested: true,
       bypassCountdownSeconds: durationSeconds,

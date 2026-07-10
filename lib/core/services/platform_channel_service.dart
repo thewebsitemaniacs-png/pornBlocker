@@ -66,6 +66,30 @@ class PlatformChannelService {
     }
   }
 
+  Future<void> setScreenBlockingEnabled(bool enabled) async {
+    try {
+      await _methodChannel.invokeMethod('setScreenBlockingEnabled', {'enabled': enabled});
+    } on PlatformException catch (_) {
+      // Silently handled
+    }
+  }
+
+  Future<void> deactivateAdmin() async {
+    try {
+      await _methodChannel.invokeMethod('deactivateAdmin');
+    } on PlatformException catch (_) {
+      // Silently handled
+    }
+  }
+
+  Future<void> openUrl(String url) async {
+    try {
+      await _methodChannel.invokeMethod('openUrl', {'url': url});
+    } on PlatformException catch (_) {
+      // Silently handled
+    }
+  }
+
   void startListeningToBlockingEvents(void Function(Map<String, dynamic> event) onEvent) {
     _eventSubscription?.cancel();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen((dynamic event) {
