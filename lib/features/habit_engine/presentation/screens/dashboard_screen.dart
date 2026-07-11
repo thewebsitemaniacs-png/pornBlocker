@@ -1011,7 +1011,7 @@ class _HabitTab extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'WELCOME BACK, ${username.toUpperCase()}',
+              'WELCOME BACK, $username',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -2701,7 +2701,7 @@ class _FloatingAlertBanner extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'ALERT: ${alert.partnerName.toUpperCase()}',
+                    'ALERT: ${alert.partnerName}',
                     style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const SizedBox(height: 2),

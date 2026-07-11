@@ -11,7 +11,6 @@ class AuthScreen extends ConsumerStatefulWidget {
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSignUp = false;
@@ -19,7 +18,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -129,40 +127,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (_isSignUp) ...[
-                              const Text(
-                                'Name',
-                                style: TextStyle(
-                                  color: Color(0xFF475569),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              TextFormField(
-                                controller: _nameController,
-                                style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14),
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your full name',
-                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                                  prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF94A3B8), size: 20),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF8FAFC),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE2EAF4)),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFFFD700), width: 1.5),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-
                             const Text(
                               'Email',
                               style: TextStyle(
