@@ -6,92 +6,113 @@ import 'package:habit_breaker/core/services/storage_service.dart';
 import 'package:habit_breaker/features/habit_engine/data/repositories/hybrid_habit_repository.dart';
 import 'package:habit_breaker/features/habit_engine/domain/entities/habit_task.dart';
 
-// 1. Fake Storage Service to open non-encrypted test boxes easily
 class TestStorageService implements StorageService {
-  @override
-  late Box<Map> tasksBox;
-  @override
-  late Box<Map> logsBox;
-  @override
-  late Box<dynamic> settingsBox;
+  late Box<Map> _tasksBox;
+  late Box<Map> _logsBox;
+  late Box<dynamic> _settingsBox;
 
   Future<void> initTest() async {
-    tasksBox = await Hive.openBox<Map>('test_tasks');
-    logsBox = await Hive.openBox<Map>('test_logs');
-    settingsBox = await Hive.openBox('test_settings');
+    _tasksBox = await Hive.openBox<Map>('tasks_test');
+    _logsBox = await Hive.openBox<Map>('logs_test');
+    _settingsBox = await Hive.openBox<dynamic>('settings_test');
   }
 
+  @override
+  Box<Map> get tasksBox => _tasksBox;
+  @override
+  Box<Map> get logsBox => _logsBox;
+  @override
+  Box<dynamic> get settingsBox => _settingsBox;
+  
   @override
   Future<void> init() async {}
 }
 
-// 2. Fake Supabase Client to capture queries without network requests
+class FakeSupabaseQueryBuilder {
+  final String tableName;
+  final FakeSupabaseClient client;
+
+  FakeSupabaseQueryBuilder(this.tableName, this.client);
+
+  Future<List<Map<String, dynamic>>> upsert(dynamic data) async {
+    final list = data is List ? data : [data];
+    for (var item in list) {
+      final map = Map<String, dynamic>.from(item);
+      final id = map['id'];
+      client.tables[tableName]!.removeWhere((element) => element['id'] == id);
+      client.tables[tableName]!.add(map);
+    }
+    return (client.tables[tableName] as List).map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  FakeSupabaseFilterBuilder delete() {
+    return FakeSupabaseFilterBuilder(tableName, client, isDelete: true);
+  }
+
+  FakeSupabaseFilterBuilder select() {
+    return FakeSupabaseFilterBuilder(tableName, client);
+  }
+}
+
+class FakeSupabaseFilterBuilder implements Future<List<Map<String, dynamic>>> {
+  final String tableName;
+  final FakeSupabaseClient client;
+  final bool isDelete;
+  String? filterField;
+  dynamic filterValue;
+
+  FakeSupabaseFilterBuilder(this.tableName, this.client, {this.isDelete = false});
+
+  FakeSupabaseFilterBuilder eq(String field, dynamic value) {
+    filterField = field;
+    filterValue = value;
+    if (isDelete) {
+      client.tables[tableName]!.removeWhere((element) => element[field] == value);
+    }
+    return this;
+  }
+
+  FakeSupabaseFilterBuilder gt(String field, dynamic value) {
+    return this;
+  }
+
+  Future<List<Map<String, dynamic>>> _execute() async {
+    var data = client.tables[tableName]!;
+    if (filterField != null) {
+      data = data.where((e) => e[filterField] == filterValue).toList();
+    }
+    return data;
+  }
+
+  @override
+  Stream<List<Map<String, dynamic>>> asStream() => _execute().asStream();
+
+  @override
+  Future<List<Map<String, dynamic>>> catchError(Function onError, {bool Function(Object error)? test}) =>
+      _execute().catchError(onError, test: test);
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(List<Map<String, dynamic>> value) onValue, {Function? onError}) =>
+      _execute().then(onValue, onError: onError);
+
+  @override
+  Future<List<Map<String, dynamic>>> timeout(Duration timeLimit, {FutureOr<List<Map<String, dynamic>>> Function()? onTimeout}) =>
+      _execute().timeout(timeLimit, onTimeout: onTimeout);
+
+  @override
+  Future<List<Map<String, dynamic>>> whenComplete(FutureOr<void> Function() action) =>
+      _execute().whenComplete(action);
+}
+
 class FakeSupabaseClient {
   final Map<String, List<Map<String, dynamic>>> tables = {
     'habit_tasks': [],
     'habit_logs': [],
   };
-  bool throwError = false;
 
-  FakeQueryBuilder from(String table) {
-    return FakeQueryBuilder(this, table);
+  FakeSupabaseQueryBuilder from(String table) {
+    return FakeSupabaseQueryBuilder(table, this);
   }
-}
-
-class FakeQueryBuilder implements Future<dynamic> {
-  final FakeSupabaseClient client;
-  final String table;
-
-  FakeQueryBuilder(this.client, this.table);
-
-  FakeQueryBuilder eq(String col, dynamic val) => this;
-  FakeQueryBuilder gt(String col, dynamic val) => this;
-
-  Future<dynamic> upsert(dynamic values) async {
-    if (client.throwError) throw Exception("Network error");
-    final list = client.tables[table]!;
-    if (values is List) {
-      for (var val in values) {
-        final map = Map<String, dynamic>.from(val as Map);
-        list.removeWhere((item) => item['id'] == map['id']);
-        list.add(map);
-      }
-    } else {
-      final map = Map<String, dynamic>.from(values as Map);
-      list.removeWhere((item) => item['id'] == map['id']);
-      list.add(map);
-    }
-    return null;
-  }
-
-  Future<dynamic> delete() async {
-    return this;
-  }
-
-  // Delegate for Future implementation when awaited
-  Future<dynamic> get _future {
-    if (client.throwError) return Future.error(Exception("Network error"));
-    return Future.value(client.tables[table]);
-  }
-
-  @override
-  Stream<dynamic> asStream() => _future.asStream();
-
-  @override
-  Future<dynamic> catchError(Function onError, {bool Function(Object error)? test}) =>
-      _future.catchError(onError, test: test);
-
-  @override
-  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) =>
-      _future.then(onValue, onError: onError);
-
-  @override
-  Future<dynamic> timeout(Duration timeLimit, {FutureOr<dynamic> Function()? onTimeout}) =>
-      _future.timeout(timeLimit, onTimeout: onTimeout);
-
-  @override
-  Future<dynamic> whenComplete(FutureOr<void> Function() action) =>
-      _future.whenComplete(action);
 }
 
 void main() {
@@ -100,11 +121,9 @@ void main() {
   late FakeSupabaseClient fakeSupabase;
   late HybridHabitRepository repository;
   
-  bool isPremium = false;
   String? userId = 'test_user_123';
 
   setUp(() async {
-    // Set up temp directory for Hive
     tempDir = await Directory.systemTemp.createTemp();
     Hive.init(tempDir.path);
 
@@ -116,7 +135,6 @@ void main() {
     repository = HybridHabitRepository(
       storageService: storageService,
       supabaseClient: fakeSupabase,
-      isPremiumCallback: () => isPremium,
       currentUserIdCallback: () => userId,
     );
   });
@@ -129,35 +147,11 @@ void main() {
   });
 
   group('HybridHabitRepository Tests', () {
-    test('Saving task in Free Tier saves locally with synced = false, does not upload to Supabase', () async {
-      isPremium = false;
+    test('Saving task when user is logged in uploads to Supabase and marks local copy synced = true', () async {
+      userId = 'test_user_123';
 
       final task = HabitTask(
         id: 'task-1',
-        userId: userId!,
-        title: 'Overcome Youtube Urge',
-        isCompleted: false,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      await repository.saveTask(task);
-
-      // Verify local box has task
-      final localTasks = await repository.getTasks();
-      expect(localTasks.length, 1);
-      expect(localTasks.first.id, 'task-1');
-      expect(localTasks.first.synced, false);
-
-      // Verify remote has nothing
-      expect(fakeSupabase.tables['habit_tasks']!.isEmpty, true);
-    });
-
-    test('Saving task in Premium Tier uploads to Supabase and marks local copy synced = true', () async {
-      isPremium = true;
-
-      final task = HabitTask(
-        id: 'task-2',
         userId: userId!,
         title: 'Mindful Breathing',
         isCompleted: false,
@@ -167,45 +161,35 @@ void main() {
 
       await repository.saveTask(task);
 
-      // Verify local has task and is marked synced
       final localTasks = await repository.getTasks();
       expect(localTasks.length, 1);
-      expect(localTasks.first.id, 'task-2');
+      expect(localTasks.first.id, 'task-1');
       expect(localTasks.first.synced, true);
 
-      // Verify remote contains task
       final remoteTasks = fakeSupabase.tables['habit_tasks']!;
       expect(remoteTasks.length, 1);
-      expect(remoteTasks.first['id'], 'task-2');
+      expect(remoteTasks.first['id'], 'task-1');
     });
 
-    test('Sync operation pushes local unsynced tasks to Supabase', () async {
-      // 1. Create a task in Free tier (synced = false)
-      isPremium = false;
+    test('Saving task when user is logged out saves locally with synced = false', () async {
+      userId = null;
+
       final task = HabitTask(
-        id: 'task-3',
-        userId: userId!,
-        title: 'Urge Replacement Exercise',
+        id: 'task-logged-out',
+        userId: 'anonymous',
+        title: 'Local only task',
         isCompleted: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
+
       await repository.saveTask(task);
 
-      // Verify remote is empty
-      expect(fakeSupabase.tables['habit_tasks']!.isEmpty, true);
-
-      // 2. Upgrade user to Premium and Sync
-      isPremium = true;
-      await repository.syncWithCloud();
-
-      // Verify local is now synced = true
       final localTasks = await repository.getTasks();
-      expect(localTasks.first.synced, true);
+      final addedTask = localTasks.firstWhere((t) => t.id == 'task-logged-out');
+      expect(addedTask.synced, false);
 
-      // Verify remote contains the task
-      expect(fakeSupabase.tables['habit_tasks']!.length, 1);
-      expect(fakeSupabase.tables['habit_tasks']!.first['id'], 'task-3');
+      expect(fakeSupabase.tables['habit_tasks']!.any((t) => t['id'] == 'task-logged-out'), false);
     });
   });
 }

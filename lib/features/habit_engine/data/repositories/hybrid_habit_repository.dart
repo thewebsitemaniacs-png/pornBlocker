@@ -6,20 +6,16 @@ import '../../domain/repositories/habit_repository.dart';
 class HybridHabitRepository implements HabitRepository {
   final StorageService _storageService;
   final dynamic _supabaseClient;
-  final bool Function() _isPremiumCallback;
   final String? Function() _currentUserIdCallback;
 
   HybridHabitRepository({
     required StorageService storageService,
     required dynamic supabaseClient,
-    required bool Function() isPremiumCallback,
     required String? Function() currentUserIdCallback,
   })  : _storageService = storageService,
         _supabaseClient = supabaseClient,
-        _isPremiumCallback = isPremiumCallback,
         _currentUserIdCallback = currentUserIdCallback;
 
-  bool get _isPremium => _isPremiumCallback();
   String? get _currentUserId => _currentUserIdCallback();
 
   @override
@@ -47,7 +43,7 @@ class HybridHabitRepository implements HabitRepository {
     final box = _storageService.tasksBox;
     var updatedTask = task;
     
-    if (_isPremium && _currentUserId != null) {
+    if (_currentUserId != null) {
       try {
         await _supabaseClient.from('habit_tasks').upsert(task.toJson(excludeSyncFlag: true));
         updatedTask = task.copyWith(synced: true);
@@ -56,7 +52,6 @@ class HybridHabitRepository implements HabitRepository {
         updatedTask = task.copyWith(synced: false);
       }
     } else {
-      // Local only for free/anonymous users
       updatedTask = task.copyWith(synced: false);
     }
     
@@ -68,7 +63,7 @@ class HybridHabitRepository implements HabitRepository {
     final box = _storageService.tasksBox;
     await box.delete(id);
 
-    if (_isPremium && _currentUserId != null) {
+    if (_currentUserId != null) {
       try {
         await _supabaseClient.from('habit_tasks').delete().eq('id', id);
       } catch (e) {
@@ -96,7 +91,7 @@ class HybridHabitRepository implements HabitRepository {
     final box = _storageService.logsBox;
     var updatedLog = log;
 
-    if (_isPremium && _currentUserId != null) {
+    if (_currentUserId != null) {
       try {
         await _supabaseClient.from('habit_logs').upsert(log.toJson(excludeSyncFlag: true));
         updatedLog = log.copyWith(synced: true);
@@ -112,7 +107,7 @@ class HybridHabitRepository implements HabitRepository {
 
   @override
   Future<void> syncWithCloud() async {
-    if (!_isPremium || _currentUserId == null) return;
+    if (_currentUserId == null) return;
 
     final tasksBox = _storageService.tasksBox;
     final logsBox = _storageService.logsBox;

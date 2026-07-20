@@ -8,6 +8,7 @@ import '../../../blocking/presentation/providers/bypass_guard_provider.dart';
 import '../../../chat/presentation/screens/supporters_list_screen.dart';
 import '../../../chat/presentation/screens/supporter_inbox_screen.dart';
 import 'app_blocker_settings_screen.dart';
+import 'partner_details_screen.dart';
 import '../providers/habit_provider.dart';
 import '../../domain/entities/habit_log.dart';
 import '../providers/daily_inspiration_provider.dart';
@@ -122,7 +123,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final isPremium = authState.profile?.isPremium ?? false;
     final username = authState.profile?.username ?? 'SleekPanda8276';
     final bypassState = ref.watch(bypassGuardProvider);
     final alerts = ref.watch(buddyNotificationProvider);
@@ -186,44 +186,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             centerTitle: true,
             backgroundColor: const Color(0xFFF6F9FD),
             elevation: 0,
-            actions: (currentIndex == 0 || currentIndex == 3 || currentIndex == 4)
-                ? [
-                    IconButton(
-                      icon: const Icon(Icons.notifications_outlined, color: Color(0xFF5D5F30)),
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('No new notifications.'),
-                            backgroundColor: Color(0xFF5AB2FF),
-                          ),
-                        );
-                      },
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.cloud_sync, color: Color(0xFF5AB2FF)),
+                tooltip: 'Cloud Sync',
+                onPressed: () {
+                  ref.read(habitTasksProvider.notifier).sync();
+                  ref.read(habitLogsProvider.notifier).sync();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Triggered background cloud sync.'),
+                      backgroundColor: Color(0xFF5AB2FF),
                     ),
-                    const SizedBox(width: 8),
-                  ]
-                : [
-                    if (isPremium)
-                      IconButton(
-                        icon: const Icon(Icons.cloud_sync, color: Color(0xFF5AB2FF)),
-                        onPressed: () {
-                          ref.read(habitTasksProvider.notifier).sync();
-                          ref.read(habitLogsProvider.notifier).sync();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Synchronizing habits database with cloud...'),
-                              backgroundColor: const Color(0xFF5AB2FF),
-                              action: SnackBarAction(
-                                label: 'Dismiss',
-                                textColor: const Color(0xFF1E293B),
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                  ],
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: Color(0xFF5D5F30)),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No new notifications.'),
+                      backgroundColor: Color(0xFF5AB2FF),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
           body: screens[currentIndex],
           bottomNavigationBar: CustomBottomNavBar(
@@ -1369,6 +1359,29 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   }
 
   Future<void> _requestSinglePermission(String type) async {
+    if (type == 'accessibility') {
+      final consentGranted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AccessibilityDisclosureDialog(),
+      );
+      if (consentGranted != true) return;
+    } else if (type == 'vpn') {
+      final consentGranted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const VpnDisclosureDialog(),
+      );
+      if (consentGranted != true) return;
+    } else if (type == 'admin') {
+      final consentGranted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AdminDisclosureDialog(),
+      );
+      if (consentGranted != true) return;
+    }
+
     try {
       final channel = ref.read(platformChannelServiceProvider);
       await channel.requestPermissions(type);
@@ -1903,7 +1916,6 @@ class _ProfileTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'SleekPanda8276';
-    final isPremium = authState.profile?.isPremium ?? false;
 
 
     return Scaffold(
@@ -1995,40 +2007,13 @@ class _ProfileTab extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    const Divider(color: Color(0xFFE2EAF4), height: 1),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Account Tier:',
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          isPremium ? 'PREMIUM SUBSCRIBER' : 'FREE TIER',
-                          style: TextStyle(
-                            color: isPremium ? const Color(0xFFB45309) : const Color(0xFF64748B),
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 24),
 
-
-            if (isPremium)
-              _buildSettingsCard(
+            _buildSettingsCard(
                 context: context,
                 title: 'Force Cloud Sync Now',
                 icon: Icons.cloud_sync,
@@ -2272,95 +2257,50 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
             const SizedBox(height: 10),
 
             if (currentProfile?.buddyId != null && currentProfile!.buddyId!.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2EAF4)),
-                ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      right: -10,
-                      top: -10,
-                      child: Opacity(
-                        opacity: 0.05,
-                        child: const Icon(
-                          Icons.shield,
-                          size: 100,
-                          color: Color(0xFF1E293B),
-                        ),
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+              Consumer(
+                builder: (context, ref, child) {
+                  final myBuddyAsync = ref.watch(myBuddyProfileProvider);
+
+                  return myBuddyAsync.when(
+                    data: (buddy) {
+                      if (buddy != null) {
+                        return Column(
                           children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFFFF7ED),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
-                                    'Linked Accountability Partner',
-                                    style: TextStyle(
-                                      color: Color(0xFF0F172A),
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 15,
-                                    ),
+                            _PartnerTile(partner: buddy),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 42,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  ref.read(authProvider.notifier).unlinkBuddy();
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Your habit logs are visible to this buddy.',
-                                    style: TextStyle(
-                                      color: Color(0xFF64748B),
-                                      fontSize: 12.5,
-                                    ),
+                                ),
+                                child: const Text(
+                                  'UNLINK BUDDY',
+                                  style: TextStyle(
+                                    color: Color(0xFFEF4444),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    letterSpacing: 1.0,
                                   ),
-                                ],
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 46,
-                          child: OutlinedButton(
-                            onPressed: () {
-                              ref.read(authProvider.notifier).unlinkBuddy();
-                            },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'UNLINK',
-                              style: TextStyle(
-                                color: Color(0xFFEF4444),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                        );
+                      }
+                      return const Center(child: CircularProgressIndicator());
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (_, __) => const Text('Failed to load buddy profile.'),
+                  );
+                },
               ),
             ] else ...[
               Container(
@@ -2399,78 +2339,59 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
                             ),
                           ),
                           IconButton(
-                            icon: _isSearching
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFFFFD200),
+                            icon: const Icon(Icons.search, color: Color(0xFF5AB2FF)),
+                            onPressed: () async {
+                              final query = _searchController.text.trim();
+                              if (query.isNotEmpty) {
+                                final foundUser = await ref.read(authProvider.notifier).searchBuddy(query);
+                                if (foundUser != null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Found user "${foundUser.username}"! Linking...'),
+                                      backgroundColor: const Color(0xFF5AB2FF),
                                     ),
-                                  )
-                                : const Icon(Icons.search, color: Color(0xFFFFD200)),
-                            onPressed: _performSearch,
+                                  );
+                                  await ref.read(authProvider.notifier).linkBuddy(foundUser.id);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('User not found. Check exact username.'),
+                                      backgroundColor: Color(0xFFEF4444),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                           ),
                         ],
                       ),
                     ),
-                    if (_searchError != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _searchError!,
-                        style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                      ),
-                    ],
-                    if (_searchResult != null) ...[
-                      const SizedBox(height: 12),
-                      const Divider(color: Color(0xFFE2EAF4)),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _searchResult!.username,
-                            style: const TextStyle(
-                              color: Color(0xFF1E293B),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              ref.read(authProvider.notifier).linkBuddy(_searchResult!.id);
-                              setState(() {
-                                _searchResult = null;
-                                _searchController.clear();
-                              });
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFFD200),
-                              foregroundColor: const Color(0xFF1E293B),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text('LINK BUDDY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
             ],
             
-            const SizedBox(height: 32),
-
-            const Text(
-              'PARTNERS YOU ARE OVERSEEING',
-              style: TextStyle(
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                letterSpacing: 1.2,
-              ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'PARTNERS YOU ARE OVERSEEING',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF64748B)),
+                  tooltip: 'Refresh Partners List',
+                  onPressed: () {
+                    ref.invalidate(linkedPartnersProvider);
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 10),
 
@@ -2494,12 +2415,20 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
                               color: Color(0xFFE0F2FE),
                               shape: BoxShape.circle,
                             ),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.person_off_outlined, color: Color(0xFF0284C7), size: 24),
+                            child: const Icon(Icons.people_outline, color: Color(0xFF0284C7), size: 28),
                           ),
                           const SizedBox(height: 16),
                           const Text(
-                            'No users have linked you as their buddy yet. Ask them to search for your username on their app!',
+                            'No Partners Overseeing You',
+                            style: TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Share your anonymous username with friends so they can add you as their accountability partner.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Color(0xFF64748B),
@@ -2510,9 +2439,8 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
                           const SizedBox(height: 20),
                           ElevatedButton.icon(
                             onPressed: () {
-                              final currentProfile = ref.read(authProvider).profile;
-                              if (currentProfile != null && currentProfile.username.isNotEmpty) {
-                                Clipboard.setData(ClipboardData(text: currentProfile.username));
+                              if (currentProfile?.username != null) {
+                                Clipboard.setData(ClipboardData(text: currentProfile!.username));
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text('Username "${currentProfile.username}" copied to clipboard! Share it with your friends.'),
@@ -2545,7 +2473,7 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
                   itemCount: partners.length,
                   itemBuilder: (context, index) {
                     final partner = partners[index];
-                    return _PartnerLogTile(partner: partner);
+                    return _PartnerTile(partner: partner);
                   },
                 );
               },
@@ -2556,11 +2484,22 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
             const SizedBox(height: 36),
             Center(
               child: Opacity(
-                opacity: 0.85,
-                child: Image.asset(
-                  'assets/images/mascot.png',
-                  height: 120,
-                  fit: BoxFit.contain,
+                opacity: 0.7,
+                child: Column(
+                  children: [
+                    const Icon(Icons.shield_outlined, color: Color(0xFF64748B), size: 24),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Accountability Encryption Active',
+                      style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'All partner check-ins and trigger logs are synced securely over SSL.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -2572,17 +2511,10 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
   }
 }
 
-class _PartnerLogTile extends ConsumerStatefulWidget {
+class _PartnerTile extends StatelessWidget {
   final UserProfile partner;
 
-  const _PartnerLogTile({required this.partner});
-
-  @override
-  ConsumerState<_PartnerLogTile> createState() => _PartnerLogTileState();
-}
-
-class _PartnerLogTileState extends ConsumerState<_PartnerLogTile> {
-  bool _isExpanded = false;
+  const _PartnerTile({required this.partner});
 
   @override
   Widget build(BuildContext context) {
@@ -2593,76 +2525,21 @@ class _PartnerLogTileState extends ConsumerState<_PartnerLogTile> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF4)),
       ),
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(widget.partner.username, style: const TextStyle(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-            subtitle: const Text('Linked Partner', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-            trailing: Icon(
-              _isExpanded ? Icons.expand_less : Icons.expand_more,
-              color: const Color(0xFFFFD200),
+      child: ListTile(
+        title: Text(partner.username, style: const TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+        subtitle: const Text('Linked Partner • Tap to view activity logs', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: Color(0xFFFFD200),
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PartnerDetailsScreen(partner: partner),
             ),
-            onTap: () {
-              setState(() {
-                _isExpanded = !_isExpanded;
-              });
-            },
-          ),
-          if (_isExpanded) ...[
-            const Divider(color: Color(0xFFE2EAF4), height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Consumer(
-                builder: (context, ref, child) {
-                  final logsAsync = ref.watch(partnerLogsProvider(widget.partner.id));
-
-                  return logsAsync.when(
-                    data: (logs) {
-                      if (logs.isEmpty) {
-                        return const Text('No log entries registered.', style: TextStyle(color: Color(0xFF475569), fontSize: 12));
-                      }
-
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: logs.length > 5 ? 5 : logs.length,
-                        itemBuilder: (context, logIndex) {
-                          final log = logs[logIndex];
-                          final isBlock = log.eventType == 'block_triggered' || log.eventType == 'blocker_stopped';
-                          final icon = isBlock ? Icons.warning_amber_rounded : Icons.info_outline;
-                          final iconColor = isBlock ? Colors.redAccent : const Color(0xFF5AB2FF);
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8.0),
-                            child: Row(
-                              children: [
-                                Icon(icon, size: 14, color: iconColor),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${log.eventType.replaceAll('_', ' ').toUpperCase()}: ${log.payload['title'] ?? log.payload['status'] ?? ''}',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: const Color(0xFF475569), fontSize: 12),
-                                  ),
-                                ),
-                                Text(
-                                  '${log.loggedAt.hour}:${log.loggedAt.minute.toString().padLeft(2, '0')}',
-                                  style: const TextStyle(color: Color(0xFF475569), fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                    loading: () => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF5AB2FF)))),
-                    error: (err, _) => Text('Error: $err', style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
-                  );
-                },
-              ),
-            ),
-          ],
-        ],
+          );
+        },
       ),
     );
   }
@@ -2675,18 +2552,22 @@ class _FloatingAlertBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final message = alert.breachCount > 1
+        ? '${alert.partnerName} has breached ${alert.breachCount} times. Please check on your partner.'
+        : '${alert.partnerName} has breached a blocker rule. Please check on your partner.';
+
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF4F7FB),
+          color: const Color(0xFFFFF1F2),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.redAccent.withOpacity(0.8), width: 1.5),
+          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.8), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 10,
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -2694,7 +2575,7 @@ class _FloatingAlertBanner extends ConsumerWidget {
         child: Row(
           children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2706,17 +2587,26 @@ class _FloatingAlertBanner extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    alert.message,
-                    style: const TextStyle(color: const Color(0xFF1E293B), fontSize: 12),
+                    message,
+                    style: const TextStyle(color: Color(0xFF1E293B), fontSize: 12),
                   ),
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.close, color: const Color(0xFF475569), size: 18),
-              onPressed: () {
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
                 ref.read(buddyNotificationProvider.notifier).dismissAlert(alert.id);
               },
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFFFE4E6),
+                ),
+                child: const Icon(Icons.close, color: Color(0xFFE11D48), size: 16),
+              ),
             ),
           ],
         ),
@@ -3273,6 +3163,684 @@ class _NavBarItemData {
     required this.activeIcon,
     required this.label,
   });
+}
+
+class AccessibilityDisclosureDialog extends StatelessWidget {
+  const AccessibilityDisclosureDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Image/Icon Section
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              color: const Color(0xFFF8FAFC),
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEFF6FF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.accessibility_new,
+                      color: Color(0xFF2563EB),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Prominent Disclosure',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content Section
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Why Flee uses Accessibility Services',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Flee requires the Accessibility Service to protect you from relapse and keep you accountable. It acts as an active layout blocker to intercept adult content.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Key Capabilities Utilized:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.search_off,
+                      title: 'Real-time Keyword Scanning',
+                      description: 'Scans text on the active screen and text inputs to catch custom trigger keywords or adult search terms.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.app_blocking,
+                      title: 'App Detection & Overlay Blocks',
+                      description: 'Monitors the foreground package name to lock down forbidden applications or browser tabs instantly.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.keyboard_return,
+                      title: 'System Block Operations',
+                      description: 'Triggers system back-navigation or home-screen actions to block access to restricted layouts.',
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: Color(0xFFE2EAF4)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Icon(Icons.verified_user, color: Color(0xFF10B981), size: 20),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Privacy Commitment: All data is processed entirely locally on-device. Flee never collects, stores, or transmits your screen content, typed inputs, or usage logs.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF047857),
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Action Buttons Section
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2EAF4)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Decline',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD200),
+                        foregroundColor: const Color(0xFF1E293B),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Accept',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF64748B), size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class VpnDisclosureDialog extends StatelessWidget {
+  const VpnDisclosureDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Section
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              color: const Color(0xFFF8FAFC),
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF0F9FF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.vpn_lock,
+                      color: Color(0xFF0284C7),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'VPN Prominent Disclosure',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content Section
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Why Flee uses a Local VPN Connection',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Flee requires a local VPN configuration to protect you from relapse at the network level. It functions as a local content filter for your web traffic.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Key Capabilities Utilized:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.dns,
+                      title: 'Local DNS Filtering',
+                      description: 'Intercepts port 53 DNS queries to identify and block adult domains, redirecting them to a safe loopback address.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.block,
+                      title: 'Network-Level Site Blocking',
+                      description: 'Provides a device-wide filter that prevents browsers and applications from loading blacklisted websites.',
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: Color(0xFFE2EAF4)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Icon(Icons.verified_user, color: Color(0xFF10B981), size: 20),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Privacy Commitment: Flee runs the VPN connection entirely locally on-device. No web traffic is routed through external proxy servers, and no browsing logs are collected, stored, or transmitted.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF047857),
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Action Buttons Section
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2EAF4)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Decline',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD200),
+                        foregroundColor: const Color(0xFF1E293B),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Accept',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF64748B), size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class AdminDisclosureDialog extends StatelessWidget {
+  const AdminDisclosureDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Section
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              color: const Color(0xFFF8FAFC),
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFFF7ED),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.shield,
+                      color: Color(0xFFEA580C),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Uninstall Guard Disclosure',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content Section
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Why Flee requests Device Administrator Privileges',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Flee utilizes Device Administrator authorization for Uninstall Guard. This helps lock down the application and prevent deletion during moments of weakness or temptation.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Key Capabilities Utilized:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.delete_forever,
+                      title: 'Prevent Uninstallation',
+                      description: 'Restricts the ability to delete or disable Flee directly from the device settings or home screen without passing the accountability gate.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      icon: Icons.lock,
+                      title: 'System Level Binding',
+                      description: 'Integrates with Android security services to protect core configuration storage and ensure stability.',
+                    ),
+                    const SizedBox(height: 20),
+                    const Divider(color: Color(0xFFE2EAF4)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Icon(Icons.verified_user, color: Color(0xFF10B981), size: 20),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Privacy Commitment: Flee uses Device Administrator privileges exclusively for uninstall prevention. Flee does not monitor your passwords, lock screen, device wipe operations, or encrypt storage.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF047857),
+                              fontWeight: FontWeight.bold,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Action Buttons Section
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2EAF4)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Decline',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD200),
+                        foregroundColor: const Color(0xFF1E293B),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Accept',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF64748B), size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 

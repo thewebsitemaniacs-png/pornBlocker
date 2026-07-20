@@ -136,7 +136,9 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun isExcludedApp(appPackage: String): Boolean {
+        val lower = appPackage.lowercase()
         return appPackage == packageName || 
+               lower == "com.joshua.flee" ||
                appPackage == launcherPackageName || 
                EXCLUDED_PACKAGES.contains(appPackage) || 
                dynamicExcludedPackages.contains(appPackage) ||
@@ -149,8 +151,14 @@ class BlockerAccessibilityService : AccessibilityService() {
 
         val appPackage = event.packageName?.toString() ?: return
 
-        // Bypass completely if excluded app
+        // Bypass completely if excluded app or flee app itself
         if (isExcludedApp(appPackage)) {
+            return
+        }
+
+        // Check active window root to ensure user isn't inside flee app while an input/overlay event fires
+        val activeWindowPackage = rootInActiveWindow?.packageName?.toString()
+        if (activeWindowPackage != null && isExcludedApp(activeWindowPackage)) {
             return
         }
 
@@ -207,6 +215,11 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
+        val nodePackage = node.packageName?.toString()
+        if (nodePackage != null && isExcludedApp(nodePackage)) {
+            return
+        }
+
         val isBrowser = isBrowserApp(appPackage) != null
         val isTextBoxOnly = dynamicTextBoxOnlyPackages.contains(appPackage)
         

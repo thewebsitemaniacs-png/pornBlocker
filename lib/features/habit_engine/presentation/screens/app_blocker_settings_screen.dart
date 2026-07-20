@@ -77,8 +77,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
       return;
     }
 
-    // Default custom package to full scan (not excluded, not text box only)
-    _updateAppMode(package, 'full', state, notifier);
+    notifier.addCustomPackage(package);
     _customPackageController.clear();
     Navigator.pop(context);
 
@@ -95,18 +94,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
     final modesState = ref.watch(appBlockingModesProvider);
     final modesNotifier = ref.read(appBlockingModesProvider.notifier);
 
-    // Find all custom packages that are not in our common list
-    final commonPackages = _commonApps.values.toSet();
-    final customPackages = <String>{
-      ...modesState.excludedPackages,
-      ...modesState.textBoxOnlyPackages,
-    }.difference(commonPackages).where((p) {
-      // Don't list system apps that are permanently hardcoded
-      return p != 'com.android.settings' &&
-             p != 'com.google.android.packageinstaller' &&
-             p != 'com.google.android.dialer' &&
-             p != 'com.android.contacts';
-    }).toList();
+    final customPackages = modesState.customPackages;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFFFFF),
@@ -264,11 +252,7 @@ class _AppBlockerSettingsScreenState extends ConsumerState<AppBlockerSettingsScr
                 IconButton(
                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                   onPressed: () {
-                    // Remove from custom list completely by returning to default full scan
-                    final excluded = List<String>.from(state.excludedPackages)..remove(package);
-                    final textBox = List<String>.from(state.textBoxOnlyPackages)..remove(package);
-                    notifier.updateExcludedPackages(excluded);
-                    notifier.updateTextBoxOnlyPackages(textBox);
+                    notifier.removeCustomPackage(package);
                   },
                 ),
             ],

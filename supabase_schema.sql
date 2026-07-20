@@ -97,7 +97,8 @@ CREATE POLICY "Buddies can view linked partner logs"
   ON public.habit_logs FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM public.profiles 
-      WHERE profiles.id = habit_logs.user_id AND profiles.buddy_id = auth.uid()
+      WHERE (profiles.id = habit_logs.user_id AND profiles.buddy_id = auth.uid())
+         OR (profiles.id = auth.uid() AND profiles.buddy_id = habit_logs.user_id)
     )
   );
 

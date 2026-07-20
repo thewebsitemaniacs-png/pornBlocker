@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../auth/domain/entities/user_profile.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/platform_channel_service.dart';
@@ -20,15 +21,11 @@ final storageServiceProvider = Provider<StorageService>((ref) {
 final habitRepositoryProvider = Provider<HabitRepository>((ref) {
   final storage = ref.watch(storageServiceProvider);
   final client = ref.watch(supabaseClientProvider);
-  
-  // Wire dynamic auth states into the repository callbacks
-  final isPremium = ref.watch(authProvider.select((state) => state.profile?.isPremium ?? false));
   final userId = ref.watch(authProvider.select((state) => state.user?.id));
 
   return HybridHabitRepository(
     storageService: storage,
     supabaseClient: client,
-    isPremiumCallback: () => isPremium,
     currentUserIdCallback: () => userId,
   );
 });
@@ -260,6 +257,21 @@ final blocklistProvider = NotifierProvider<BlocklistNotifier, BlocklistState>(()
   return BlocklistNotifier();
 });
 
+final myBuddyProfileProvider = FutureProvider<UserProfile?>((ref) async {
+  final client = ref.watch(supabaseClientProvider);
+  final auth = ref.watch(authProvider);
+  final buddyId = auth.profile?.buddyId;
+  if (buddyId == null || buddyId.isEmpty) return null;
+
+  try {
+    final data = await client.from('profiles').select().eq('id', buddyId).maybeSingle();
+    if (data != null) {
+      return UserProfile.fromJson(Map<String, dynamic>.from(data));
+    }
+  } catch (_) {}
+  return null;
+});
+
 final linkedPartnersProvider = FutureProvider<List<UserProfile>>((ref) async {
   final client = ref.watch(supabaseClientProvider);
   final auth = ref.watch(authProvider);
@@ -293,45 +305,88 @@ final partnerLogsProvider = FutureProvider.family<List<HabitLog>, String>((ref, 
 class BuddyAlert {
   final String id;
   final String partnerName;
-  final String message;
+  final int breachCount;
   final DateTime timestamp;
 
   BuddyAlert({
     required this.id,
     required this.partnerName,
-    required this.message,
+    required this.breachCount,
     required this.timestamp,
   });
 }
 
 class BuddyNotificationNotifier extends Notifier<List<BuddyAlert>> {
-  DateTime _lastChecked = DateTime.now();
+  DateTime _lastChecked = DateTime.now().subtract(const Duration(hours: 24));
   Timer? _timer;
+  final Set<String> _dismissedAlertIds = {};
 
   @override
   List<BuddyAlert> build() {
+    final storage = ref.watch(storageServiceProvider);
+    final cachedDismissed = storage.settingsBox.get('dismissed_alert_ids') as List<dynamic>?;
+    if (cachedDismissed != null) {
+      _dismissedAlertIds.addAll(cachedDismissed.cast<String>());
+    }
+
     final partnersVal = ref.watch(linkedPartnersProvider);
-    
+    final myBuddyVal = ref.watch(myBuddyProfileProvider);
+
+    final List<UserProfile> allMonitoredPartners = [];
     partnersVal.whenData((partners) {
-      if (partners.isEmpty) return;
+      allMonitoredPartners.addAll(partners);
+    });
+    myBuddyVal.whenData((buddy) {
+      if (buddy != null && !allMonitoredPartners.any((p) => p.id == buddy.id)) {
+        allMonitoredPartners.add(buddy);
+      }
+    });
+
+    if (allMonitoredPartners.isNotEmpty) {
       final client = ref.read(supabaseClientProvider);
 
       _timer?.cancel();
       _timer = Timer.periodic(const Duration(seconds: 30), (_) async {
-        await _checkNewAlerts(partners, client);
+        await _checkNewAlerts(allMonitoredPartners, client);
       });
+
+      // Initial check for recent breaches (e.g. while app was closed or offline)
+      _checkNewAlerts(allMonitoredPartners, client);
+
+      // Listen to PostgreSQL changes in real-time
+      final channel = client
+          .channel('public:habit_logs')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'habit_logs',
+            callback: (payload) {
+              final newRecord = payload.newRecord;
+              if (newRecord.isEmpty) return;
+
+              final String? partnerId = newRecord['user_id'] as String?;
+              final String? eventType = newRecord['event_type'] as String?;
+              if (partnerId == null || eventType != 'block_triggered') return;
+
+              _checkNewAlerts(allMonitoredPartners, client);
+              ref.invalidate(partnerLogsProvider(partnerId));
+            },
+          );
+
+      channel.subscribe();
 
       ref.onDispose(() {
         _timer?.cancel();
+        client.removeChannel(channel);
       });
-    });
+    }
 
     return [];
   }
 
   Future<void> _checkNewAlerts(List<UserProfile> partners, dynamic client) async {
     final now = DateTime.now();
-    final newlyFoundAlerts = <BuddyAlert>[];
+    final updatedAlerts = <BuddyAlert>[];
 
     for (final partner in partners) {
       try {
@@ -340,32 +395,46 @@ class BuddyNotificationNotifier extends Notifier<List<BuddyAlert>> {
             .select()
             .eq('user_id', partner.id)
             .eq('event_type', 'block_triggered')
-            .gt('logged_at', _lastChecked.toUtc().toIso8601String())
             .order('logged_at', ascending: false);
 
         final logs = (response as List)
             .map((e) => HabitLog.fromJson(Map<String, dynamic>.from(e)))
             .toList();
 
-        for (final log in logs) {
-          newlyFoundAlerts.add(BuddyAlert(
-            id: log.id,
-            partnerName: partner.username,
-            message: 'A blocker rule was breached. Please check on your partner.',
-            timestamp: log.loggedAt,
-          ));
+        if (logs.isNotEmpty) {
+          final latestLog = logs.first;
+          final alertId = 'alert_${partner.id}_${latestLog.id}';
+
+          if (!_dismissedAlertIds.contains(alertId)) {
+            updatedAlerts.add(BuddyAlert(
+              id: alertId,
+              partnerName: partner.username,
+              breachCount: logs.length,
+              timestamp: latestLog.loggedAt,
+            ));
+          }
         }
       } catch (_) {}
     }
 
     _lastChecked = now;
-    if (newlyFoundAlerts.isNotEmpty) {
-      state = [...newlyFoundAlerts, ...state];
-    }
+    state = updatedAlerts;
   }
 
-  void dismissAlert(String alertId) {
+  Future<void> dismissAlert(String alertId) async {
+    _dismissedAlertIds.add(alertId);
+    final storage = ref.read(storageServiceProvider);
+    await storage.settingsBox.put('dismissed_alert_ids', _dismissedAlertIds.toList());
     state = state.where((a) => a.id != alertId).toList();
+  }
+
+  Future<void> dismissAllAlerts() async {
+    for (final alert in state) {
+      _dismissedAlertIds.add(alert.id);
+    }
+    final storage = ref.read(storageServiceProvider);
+    await storage.settingsBox.put('dismissed_alert_ids', _dismissedAlertIds.toList());
+    state = [];
   }
 }
 
