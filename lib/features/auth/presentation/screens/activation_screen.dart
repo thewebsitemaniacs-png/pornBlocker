@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../../../../features/habit_engine/presentation/providers/habit_provider.dart';
-import 'package:habit_breaker/features/auth/presentation/providers/auth_provider.dart';
+import '../../presentation/providers/auth_provider.dart';
+import 'package:habit_breaker/features/habit_engine/presentation/providers/habit_provider.dart';
 
-class PaywallScreen extends ConsumerStatefulWidget {
-  final VoidCallback? onUpgradeSuccess;
+class ActivationScreen extends ConsumerStatefulWidget {
+  const ActivationScreen({super.key});
 
-  const PaywallScreen({super.key, this.onUpgradeSuccess});
+  static void show(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const ActivationScreen(),
+      ),
+    );
+  }
 
   @override
-  ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
+  ConsumerState<ActivationScreen> createState() => _ActivationScreenState();
 }
 
-class _PaywallScreenState extends ConsumerState<PaywallScreen> {
+class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   late final WebViewController _webViewController;
   bool _isLoading = true;
 
@@ -95,11 +101,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () {
-            if (widget.onUpgradeSuccess != null) {
-              widget.onUpgradeSuccess!();
-            }
-          },
+          onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'ACTIVATE',
@@ -134,35 +136,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   setState(() {
                     _isLoading = true;
                   });
-                  try {
-                    await ref.read(authProvider.notifier).activatePremium();
-                    await ref.read(habitLogsProvider.notifier).addLog(
-                      'premium_unlocked',
-                      {'method': 'razorpay', 'status': 'completed'},
+                  await ref.read(authProvider.notifier).activatePremium();
+                  if (mounted) {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Successfully configured and active!'),
+                        backgroundColor: Color(0xFF10B981),
+                      ),
                     );
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Activation successful!'),
-                          backgroundColor: Color(0xFF10B981),
-                        ),
-                      );
-                      if (widget.onUpgradeSuccess != null) {
-                        widget.onUpgradeSuccess!();
-                      }
-                    }
-                  } catch (e) {
-                    setState(() {
-                      _isLoading = false;
-                    });
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Activation failed: $e'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -183,6 +165,89 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ActivationOverlay extends ConsumerWidget {
+  final String? featureName;
+  final IconData? featureIcon;
+
+  const ActivationOverlay({
+    super.key,
+    this.featureName,
+    this.featureIcon,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Card(
+          color: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: Color(0xFFE2EAF4)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFEE2E2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '😔',
+                      style: TextStyle(fontSize: 36),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "You can't access this Feature",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await ref.read(platformChannelServiceProvider).openUrl('https://www.instagram.com/theflee.app/');
+                    },
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text(
+                      'Find us on Instagram',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFE1306C),
+                      side: const BorderSide(color: Color(0xFFE1306C)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

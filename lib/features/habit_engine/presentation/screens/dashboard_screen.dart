@@ -14,6 +14,7 @@ import '../../domain/entities/habit_log.dart';
 import '../providers/daily_inspiration_provider.dart';
 import '../../domain/entities/daily_inspiration.dart';
 import 'package:habit_breaker/features/auth/presentation/screens/paywall_screen.dart';
+import 'package:habit_breaker/features/auth/presentation/screens/activation_screen.dart';
 
 final permissionStatesFutureProvider = FutureProvider.autoDispose<Map<String, bool>>((ref) async {
   final channel = ref.read(platformChannelServiceProvider);
@@ -44,25 +45,97 @@ class HasConfessedToStranger extends Notifier<bool> {
 
 final hasConfessedToStrangerProvider = NotifierProvider<HasConfessedToStranger, bool>(HasConfessedToStranger.new);
 
-void _showPaywallBottomSheet(BuildContext context) {
-  showModalBottomSheet(
+void _showPremiumUsagePlanDialog(BuildContext context) {
+  showDialog(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) {
-      return Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: PaywallScreen(
-          onUpgradeSuccess: () {
-            Navigator.pop(context);
+    builder: (context) => Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      backgroundColor: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        child: Consumer(
+          builder: (context, ref, child) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFEE2E2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '😔',
+                      style: TextStyle(fontSize: 32),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "You can't access this Feature",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await ref.read(platformChannelServiceProvider).openUrl('https://www.instagram.com/theflee.app/');
+                    },
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text(
+                      'Find us on Instagram',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFE1306C),
+                      side: const BorderSide(color: Color(0xFFE1306C)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF8906),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Dismiss',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
           },
         ),
-      );
-    },
+      ),
+    ),
   );
 }
 
@@ -383,6 +456,8 @@ class _HabitTab extends ConsumerWidget {
     required Color iconColor,
     required Color bgColor,
     required VoidCallback onTap,
+    bool isPremiumFeature = false,
+    bool isPremium = false,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -971,6 +1046,7 @@ class _HabitTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'Anonymous Explorer';
+    final isPremium = authState.profile?.isPremium ?? false;
     final hasPartner = authState.profile?.buddyId != null && authState.profile!.buddyId!.isNotEmpty;
     final hasConfessed = ref.watch(hasConfessedToStrangerProvider);
 
@@ -1043,6 +1119,7 @@ class _HabitTab extends ConsumerWidget {
                 icon: Icons.shield,
                 iconColor: const Color(0xFF10B981),
                 bgColor: const Color(0xFFD1FAE5),
+                isPremium: isPremium,
                 onTap: () {
                   ref.read(dashboardTabIndexProvider.notifier).setIndex(1);
                 },
@@ -1056,6 +1133,7 @@ class _HabitTab extends ConsumerWidget {
                 icon: Icons.people_outline,
                 iconColor: const Color(0xFF3B82F6),
                 bgColor: const Color(0xFFDBEAFE),
+                isPremium: isPremium,
                 onTap: () {
                   ref.read(dashboardTabIndexProvider.notifier).setIndex(2);
                 },
@@ -1070,7 +1148,13 @@ class _HabitTab extends ConsumerWidget {
                 icon: Icons.chat_bubble_outline,
                 iconColor: const Color(0xFFEC4899),
                 bgColor: const Color(0xFFFCE7F3),
+                isPremiumFeature: true,
+                isPremium: isPremium,
                 onTap: () async {
+                  if (!isPremium) {
+                    _showPremiumUsagePlanDialog(context);
+                    return;
+                  }
                   final storage = ref.read(storageServiceProvider);
                   await storage.settingsBox.put('has_confessed_to_stranger', true);
                   ref.read(hasConfessedToStrangerProvider.notifier).setConfessed();
@@ -1360,6 +1444,11 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
 
   Future<void> _requestSinglePermission(String type) async {
     if (type == 'accessibility') {
+      final isPremium = ref.read(authProvider).profile?.isPremium ?? false;
+      if (!isPremium) {
+        _showPremiumUsagePlanDialog(context);
+        return;
+      }
       final consentGranted = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -1419,6 +1508,11 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
   Future<void> _toggleScreenBlocker(bool value) async {
     final storage = ref.read(storageServiceProvider);
     if (value) {
+      final isPremium = ref.read(authProvider).profile?.isPremium ?? false;
+      if (!isPremium) {
+        _showPremiumUsagePlanDialog(context);
+        return;
+      }
       if (_permissionStates['accessibility'] != true) {
         _requestSinglePermission('accessibility');
         return;
@@ -1489,6 +1583,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
     required VoidCallback onGrant,
     required bool isFeatureEnabled,
     required ValueChanged<bool> onFeatureToggled,
+    bool isPremiumFeature = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1807,6 +1902,7 @@ class _BlockingTabState extends ConsumerState<_BlockingTab> {
               onGrant: () => _requestSinglePermission('accessibility'),
               isFeatureEnabled: _isScreenBlockerEnabled,
               onFeatureToggled: (val) => _toggleScreenBlocker(val),
+              isPremiumFeature: true,
             ),
             const SizedBox(height: 16),
             _buildPermissionCard(
@@ -1871,6 +1967,8 @@ class _ProfileTab extends ConsumerWidget {
     required VoidCallback onTap,
     Color? borderColor,
     Color? textColor,
+    bool isPremiumFeature = false,
+    bool isPremium = false,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1916,6 +2014,7 @@ class _ProfileTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final username = authState.profile?.username ?? 'SleekPanda8276';
+    final isPremium = authState.profile?.isPremium ?? false;
 
 
     return Scaffold(
@@ -2019,6 +2118,7 @@ class _ProfileTab extends ConsumerWidget {
                 icon: Icons.cloud_sync,
                 iconBg: const Color(0xFFF0F9FF),
                 iconColor: const Color(0xFF0284C7),
+                isPremium: isPremium,
                 onTap: () async {
                   try {
                     await ref.read(habitTasksProvider.notifier).sync();
@@ -2066,7 +2166,13 @@ class _ProfileTab extends ConsumerWidget {
               icon: Icons.chat_bubble_outline,
               iconBg: const Color(0xFFFCE7F3),
               iconColor: const Color(0xFFEC4899),
+              isPremiumFeature: true,
+              isPremium: isPremium,
               onTap: () async {
+                if (!isPremium) {
+                  _showPremiumUsagePlanDialog(context);
+                  return;
+                }
                 final storage = ref.read(storageServiceProvider);
                 await storage.settingsBox.put('has_confessed_to_stranger', true);
                 ref.read(hasConfessedToStrangerProvider.notifier).setConfessed();
@@ -2080,7 +2186,13 @@ class _ProfileTab extends ConsumerWidget {
               icon: Icons.shield_outlined,
               iconBg: const Color(0xFFF0F9FF),
               iconColor: const Color(0xFF0284C7),
+              isPremiumFeature: true,
+              isPremium: isPremium,
               onTap: () {
+                if (!isPremium) {
+                  _showPremiumUsagePlanDialog(context);
+                  return;
+                }
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -2092,10 +2204,27 @@ class _ProfileTab extends ConsumerWidget {
 
             _buildSettingsCard(
               context: context,
+              title: 'Account',
+              icon: Icons.manage_accounts_outlined,
+              iconBg: const Color(0xFFFEF3C7),
+              iconColor: const Color(0xFFD97706),
+              isPremium: isPremium,
+              onTap: () async {
+                final currentUser = ref.read(authProvider).user;
+                if (currentUser != null) {
+                  final url = 'https://thefleeapp.in/?userId=${currentUser.id}&email=${Uri.encodeComponent(currentUser.email ?? "")}';
+                  await ref.read(platformChannelServiceProvider).openUrl(url);
+                }
+              },
+            ),
+
+            _buildSettingsCard(
+              context: context,
               title: 'Sign Out of Application',
               icon: Icons.logout,
               iconBg: const Color(0xFFF0F9FF),
               iconColor: const Color(0xFF0284C7),
+              isPremium: isPremium,
               onTap: () {
                 ref.read(authProvider.notifier).signOut();
               },
@@ -2216,6 +2345,18 @@ class _BuddyTabState extends ConsumerState<_BuddyTab> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final currentProfile = authState.profile;
+    final isPremium = currentProfile?.isPremium ?? false;
+
+    if (!isPremium) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF6F9FD),
+        body: ActivationOverlay(
+          featureName: 'Accountability Partner Synchronization',
+          featureIcon: Icons.people_outline,
+        ),
+      );
+    }
+
     final linkedPartnersAsync = ref.watch(linkedPartnersProvider);
 
     return Scaffold(
