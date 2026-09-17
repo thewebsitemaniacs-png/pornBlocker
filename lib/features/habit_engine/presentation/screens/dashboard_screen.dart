@@ -2212,7 +2212,7 @@ class _ProfileTab extends ConsumerWidget {
               onTap: () async {
                 final currentUser = ref.read(authProvider).user;
                 if (currentUser != null) {
-                  final url = 'https://thefleeapp.in/?userId=${currentUser.id}&email=${Uri.encodeComponent(currentUser.email ?? "")}';
+                  final url = 'https://web.thefleeapp.in/?userId=${currentUser.id}&email=${Uri.encodeComponent(currentUser.email ?? "")}';
                   await ref.read(platformChannelServiceProvider).openUrl(url);
                 }
               },
