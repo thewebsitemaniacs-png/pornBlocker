@@ -145,6 +145,23 @@ class BlockerAccessibilityService : AccessibilityService() {
                isKeyboardApp(appPackage)
     }
 
+    private fun isNodeInExcludedApp(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        while (current != null) {
+            val pName = current.packageName?.toString()
+            if (pName != null && isExcludedApp(pName)) {
+                return true
+            }
+            val parentNode = try {
+                current.parent
+            } catch (e: Exception) {
+                null
+            }
+            current = parentNode
+        }
+        return false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!isScreenBlockingEnabled) return
         if (event == null) return
@@ -184,12 +201,14 @@ class BlockerAccessibilityService : AccessibilityService() {
         // 2. Scan direct event node tree context
         val eventSource = event.source
         if (eventSource != null) {
+            if (isNodeInExcludedApp(eventSource)) return
             checkNodeAndChildren(eventSource, appPackage)
         }
 
         // 3. Scan full window contents (catches rendered/scrolled views in background thread loops)
         val activeWindow = rootInActiveWindow
         if (activeWindow != null) {
+            if (isNodeInExcludedApp(activeWindow)) return
             checkNodeAndChildren(activeWindow, appPackage)
         }
     }
@@ -217,6 +236,9 @@ class BlockerAccessibilityService : AccessibilityService() {
     private fun checkNodeAndChildren(node: AccessibilityNodeInfo, appPackage: String) {
         val nodePackage = node.packageName?.toString()
         if (nodePackage != null && isExcludedApp(nodePackage)) {
+            return
+        }
+        if (isNodeInExcludedApp(node)) {
             return
         }
 
